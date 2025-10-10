@@ -1,0 +1,68 @@
+name: cleanupv1
+description: A volunteer cleanup management app
+
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # HTTP requests
+  http: ^1.1.0
+
+  # State management
+  provider: ^6.0.5
+
+  # Shared preferences for token storage
+  shared_preferences: ^2.2.2
+
+  # JSON serialization
+  json_annotation: ^4.8.1
+
+  # Geolocation
+  geolocator: ^12.0.0
+
+  # Firebase Cloud Messaging for push notifications
+  firebase_core: ^3.0.0
+  firebase_messaging: ^15.0.0
+
+  # Icons
+  cupertino_icons: ^1.0.2
+
+  # Localization
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.2
+
+  # Animations
+  animated_text_kit: ^4.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+    
+  flutter_lints: ^2.0.0
+  
+  # Code generation
+  json_serializable: ^6.7.1
+  build_runner: ^2.4.7
+
+flutter:
+  uses-material-design: true
+
+  # Uncomment if you want to add assets
+  # assets:
+  #   - images/
+  
+  # Uncomment if you want to add custom fonts
+  # fonts:
+  #   - family: Schyler
+  #     fonts:
+  #       - asset: fonts/Schyler-Regular.ttf
+  #       - asset: fonts/Schyler-Italic.ttf
+  #         style: italic

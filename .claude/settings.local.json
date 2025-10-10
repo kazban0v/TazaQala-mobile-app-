@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(git checkout:*)",
+      "Bash(del auth_provider.dart)",
+      "Bash(ren:*)",
+      "Bash(flutter pub:*)",
+      "Read(//c/Users/User/Desktop/ItStartUp/CleanUpAlmatyV1/custom_admin/**)",
+      "Read(//c/Users/User/Desktop/ItStartUp/CleanUpAlmatyV1/**)",
+      "Bash(flutter:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
