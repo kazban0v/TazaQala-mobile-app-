@@ -23,15 +23,6 @@ workflows:
         script: |
           flutter pub get
       
-      - name: 🔧 Generate iOS build files
-        script: |
-          flutter precache --ios
-          flutter build ios-framework --no-codesign
-      
-      - name: 🍎 Install CocoaPods dependencies
-        script: |
-          cd ios && pod install
-      
       - name: 🏗️ Build iOS release (without signing)
         script: |
           flutter build ios --release --no-codesign
