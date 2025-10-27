@@ -40,6 +40,43 @@ workflows:
           failure: true
 
   # ===================================
+  # iOS Simulator - Для Stellar App Preview
+  # ===================================
+  ios-simulator:
+    name: iOS Simulator
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+    
+    environment:
+      vars:
+        FLUTTER_VERSION: 3.24.0
+      
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    
+    scripts:
+      - name: 📦 Get Flutter packages
+        script: |
+          flutter pub get
+      
+      - name: 🖥️ Build iOS for Simulator
+        script: |
+          flutter build ios --simulator --debug
+    
+    artifacts:
+      - build/ios/Debug-iphonesimulator/*.app
+      - /tmp/xcodebuild_logs/*.log
+    
+    publishing:
+      email:
+        recipients:
+          - kazban0v.beybit@gmail.com
+        notify:
+          success: true
+          failure: true
+
+  # ===================================
   # Android Workflow - Сборка для Android
   # ===================================
   android-release:
