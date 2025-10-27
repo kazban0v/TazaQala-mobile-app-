@@ -1,0 +1,149 @@
+workflows:
+  # ===================================
+  # iOS Workflow - Сборка для iPhone
+  # ===================================
+  ios-release:
+    name: iOS Release
+    max_build_duration: 120
+    instance_type: mac_mini_m1
+    
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.example.cleanupv1
+      
+      vars:
+        # Переменные окружения
+        FLUTTER_VERSION: 3.24.0
+        XCODE_WORKSPACE: "Runner.xcworkspace"
+        XCODE_SCHEME: "Runner"
+      
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    
+    scripts:
+      - name: 📦 Get Flutter packages
+        script: |
+          flutter packages pub get
+      
+      - name: 🍎 Install CocoaPods dependencies
+        script: |
+          cd ios && pod install
+      
+      - name: 🏗️ Build iOS release
+        script: |
+          flutter build ipa --release \
+            --export-options-plist=$HOME/export_options.plist
+    
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    
+    publishing:
+      email:
+        recipients:
+          - kazban0v.beybit@gmail.com
+        notify:
+          success: true
+          failure: true
+      
+      app_store_connect:
+        # Для публикации в TestFlight
+        # Нужно настроить API ключ в Codemagic
+        submit_to_testflight: true
+
+  # ===================================
+  # Android Workflow - Сборка для Android
+  # ===================================
+  android-release:
+    name: Android Release
+    max_build_duration: 60
+    instance_type: linux_x2
+    
+    environment:
+      vars:
+        FLUTTER_VERSION: 3.24.0
+      
+      flutter: stable
+      
+      groups:
+        # Можно добавить signing credentials
+        - android_credentials
+    
+    scripts:
+      - name: 📦 Get Flutter packages
+        script: |
+          flutter packages pub get
+      
+      - name: 🤖 Build Android APK
+        script: |
+          flutter build apk --release
+      
+      - name: 🤖 Build Android App Bundle
+        script: |
+          flutter build appbundle --release
+    
+    artifacts:
+      - build/app/outputs/**/*.apk
+      - build/app/outputs/**/*.aab
+    
+    publishing:
+      email:
+        recipients:
+          - kazban0v.beybit@gmail.com
+        notify:
+          success: true
+          failure: true
+      
+      google_play:
+        # Для публикации в Google Play
+        # Нужно настроить credentials в Codemagic
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal
+
+  # ===================================
+  # Development Workflow - Быстрые тесты
+  # ===================================
+  development:
+    name: Development Build
+    max_build_duration: 30
+    instance_type: linux_x2
+    
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: 'develop'
+          include: true
+          source: true
+    
+    environment:
+      flutter: stable
+    
+    scripts:
+      - name: 📦 Get packages
+        script: flutter packages pub get
+      
+      - name: 🧪 Run tests
+        script: flutter test
+        ignore_failure: true
+      
+      - name: 🔍 Analyze code
+        script: flutter analyze
+        ignore_failure: true
+      
+      - name: 🤖 Build Android APK (Debug)
+        script: flutter build apk --debug
+    
+    artifacts:
+      - build/app/outputs/**/*.apk
+    
+    publishing:
+      email:
+        recipients:
+          - kazban0v.beybit@gmail.com
+        notify:
+          success: false
+          failure: true
+
