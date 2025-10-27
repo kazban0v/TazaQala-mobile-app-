@@ -236,13 +236,11 @@ class NotificationService {
     if (message.notification != null) {
       print('📢 Уведомление: ${message.notification!.title} - ${message.notification!.body}');
 
-      // Показать локальное уведомление в шторке Android
-      _showLocalNotification(
-        message.notification!.title ?? 'Уведомление',
-        message.notification!.body ?? '',
-      );
-
-      // Получить текущий контекст для показа уведомления внутри приложения
+      // ✅ ИСПРАВЛЕНИЕ: Убрано дублирование!
+      // Локальное уведомление показывает НАТИВНЫЙ код (MyFirebaseMessagingService.kt для Android, AppDelegate.swift для iOS)
+      // Поэтому здесь НЕ вызываем _showLocalNotification()
+      
+      // Показываем ТОЛЬКО in-app уведомление (внутри приложения)
       final context = navigatorKey.currentContext;
       if (context != null) {
         showInAppNotification(

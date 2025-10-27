@@ -1,16 +1,36 @@
 /// Централизованная конфигурация приложения
 class AppConfig {
-  // 🌐 BASE URL для API
-  static const String apiBaseUrl = String.fromEnvironment(
-    'API_URL',
-    defaultValue: 'http://10.0.2.2:8000', // Для эмулятора Android
+  // 🔧 Режим работы (production/development)
+  static const bool isProduction = bool.fromEnvironment(
+    'PRODUCTION',
+    defaultValue: false,
   );
 
-  // 📱 Для продакшена:
-  // flutter run --dart-define=API_URL=https://api.birqadam.kz
-  
-  // 🔧 Для реального устройства в локальной сети:
-  // flutter run --dart-define=API_URL=http://192.168.1.100:8000
+  // 🌐 BASE URL для API
+  /// ✅ ИСПРАВЛЕНИЕ: Автоматическое определение URL по режиму
+  static String get apiBaseUrl {
+    // Если передан явный URL через dart-define, используем его
+    const customUrl = String.fromEnvironment('API_URL');
+    if (customUrl.isNotEmpty) {
+      return customUrl;
+    }
+    
+    // Иначе выбираем по режиму
+    if (isProduction) {
+      // ✅ Production: HTTPS
+      return 'https://api.birqadam.kz';
+    } else {
+      // 🔧 Development: HTTP для эмулятора
+      return 'http://10.0.2.2:8000';  // Android Emulator
+      // Для iOS симулятора: 'http://localhost:8000'
+      // Для реального устройства: 'http://192.168.1.XXX:8000'
+    }
+  }
+
+  // 📱 Использование:
+  // Development (эмулятор): flutter run
+  // Development (реальное устройство): flutter run --dart-define=API_URL=http://192.168.1.100:8000
+  // Production: flutter build apk --dart-define=PRODUCTION=true
 
   /// Полный URL для API endpoints
   static String get apiUrl => apiBaseUrl;
@@ -53,11 +73,6 @@ class AppConfig {
   static String get leaderboardUrl => '$customAdminApiUrl/leaderboard/';
 
   // 🔧 Настройки приложения
-  static const bool isProduction = bool.fromEnvironment(
-    'PRODUCTION',
-    defaultValue: false,
-  );
-
   static const bool enableLogging = !isProduction;
 
   // ⏱️ Таймауты

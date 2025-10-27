@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'main.dart';
 import 'notification_service.dart';
 import 'widgets/volunteer_type_badge.dart';
@@ -16,6 +17,7 @@ import 'screens/auth_screen.dart';
 import 'screens/photo_reports_tab.dart';
 import 'services/api_service.dart';
 import 'providers/auth_provider.dart';
+import 'providers/photo_reports_provider.dart';
 
 // Модель проекта для организатора
 class OrganizerProject {
@@ -102,7 +104,35 @@ class _OrganizerPageState extends State<OrganizerPage> {
    void initState() {
      super.initState();
      _loadTokenAndData();
+     _setupNotificationListener();
    }
+
+  // ✅ ИСПРАВЛЕНИЕ: Добавлен listener для автоматического обновления при получении уведомлений
+  void _setupNotificationListener() {
+    // Слушаем foreground сообщения напрямую через FirebaseMessaging
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      final data = message.data;
+      final type = data['type'];
+      
+      print('📱 Organizer page: Получено FCM сообщение, тип: $type');
+      
+      // Если получено уведомление о новом фото - обновляем список фотоотчетов
+      if (type == 'photo_report_submitted') {
+        print('📱 Organizer page: Получено уведомление о фото, обновляем список...');
+        // Обновляем список фотоотчетов через провайдер
+        if (mounted) {
+          final photoReportsProvider = Provider.of<PhotoReportsProvider>(context, listen: false);
+          photoReportsProvider.loadPhotoReports();
+        }
+      }
+      
+      // Если получено уведомление о новом задании - обновляем список проектов
+      if (type == 'task_assigned') {
+        print('📱 Organizer page: Получено уведомление о задании, обновляем список...');
+        _loadProjects();
+      }
+    });
+  }
 
   Future<void> _loadTokenAndData() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -322,6 +352,25 @@ class _OrganizerPageState extends State<OrganizerPage> {
           _buildProfileTab(),
         ],
       ),
+      // ✅ ИСПРАВЛЕНИЕ: Добавлена кнопка быстрого создания проекта
+      floatingActionButton: _selectedIndex == 0 && _projects.isNotEmpty
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                setState(() {
+                  _selectedIndex = 1; // Переключаем на вкладку "Создать"
+                });
+              },
+              backgroundColor: const Color(0xFF4CAF50),
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text(
+                'Создать проект',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            )
+          : null,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: (index) {
@@ -380,7 +429,10 @@ class _OrganizerPageState extends State<OrganizerPage> {
               message: 'Создайте первый проект для начала работы',
               actionText: 'Создать проект',
               onAction: () {
-                // TODO: Navigate to create project
+                // ✅ ИСПРАВЛЕНИЕ: Переключаем на вкладку "Создать" (индекс 1)
+                setState(() {
+                  _selectedIndex = 1;
+                });
               },
             ),
           ],
@@ -1197,7 +1249,11 @@ class _OrganizerPageState extends State<OrganizerPage> {
                                     _longitude = null;
                                   });
 
-                                  _loadProjects();
+                                  // ✅ ИСПРАВЛЕНИЕ: Обновляем список проектов и переключаемся на вкладку "Проекты"
+                                  await _loadProjects();
+                                  setState(() {
+                                    _selectedIndex = 0; // Переключаем на вкладку "Проекты"
+                                  });
                                 } else {
                                   final data = jsonDecode(response.body);
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -2827,6 +2883,10 @@ class _OrganizerPageState extends State<OrganizerPage> {
                   return;
                 }
 
+                // ✅ ИСПРАВЛЕНИЕ: Сохраняем контекст перед асинхронной операцией
+                final navigator = Navigator.of(context);
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
+
                 try {
                   final requestData = {
                                 'text': textController.text.trim(),
@@ -2848,7 +2908,7 @@ class _OrganizerPageState extends State<OrganizerPage> {
                   final authProvider = Provider.of<AuthProvider>(context, listen: false);
                   final token = authProvider.token;
                   if (token == null || token.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    scaffoldMessenger.showSnackBar(
                       const SnackBar(content: Text('Ошибка авторизации')),
                     );
                     return;
@@ -2865,9 +2925,10 @@ class _OrganizerPageState extends State<OrganizerPage> {
 
                   if (response.statusCode == 201) {
                     final data = jsonDecode(response.body);
-                                Navigator.pop(context);
+                                navigator.pop();
+                                // ✅ ИСПРАВЛЕНИЕ: Обновляем список проектов после создания задачи
                                 _loadProjects();
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    scaffoldMessenger.showSnackBar(
                       SnackBar(
                         content: Text(data['message'] ?? 'Задача создана успешно!'),
                         backgroundColor: Colors.green,
@@ -2875,7 +2936,7 @@ class _OrganizerPageState extends State<OrganizerPage> {
                     );
                   } else {
                     final data = jsonDecode(response.body);
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    scaffoldMessenger.showSnackBar(
                       SnackBar(
                         content: Text(data['error'] ?? 'Ошибка при создании задачи'),
                         backgroundColor: Colors.red,
@@ -2884,7 +2945,7 @@ class _OrganizerPageState extends State<OrganizerPage> {
                   }
                 } catch (e) {
                   print('Ошибка создания задачи: $e');
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  scaffoldMessenger.showSnackBar(
                     const SnackBar(
                       content: Text('Ошибка подключения к серверу'),
                       backgroundColor: Colors.red,
