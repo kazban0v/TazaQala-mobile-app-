@@ -61,13 +61,136 @@ class _PendingApprovalScreenState extends State<PendingApprovalScreen>
 
       if (!mounted) return;
 
-      // If approved, navigate to organizer page
-      if (authProvider.user?.isApproved ?? false) {
-        Navigator.of(context).pushReplacementNamed('/organizer');
+      final user = authProvider.user;
+
+      // If rejected, show dialog and logout
+      if (user?.isRejected ?? false) {
+        _showRejectionDialog();
+        return;
+      }
+
+      // If approved, show success dialog then navigate
+      if (user?.isApproved ?? false) {
+        _showApprovalDialog();
+        return;
       }
     } catch (error) {
       // Silently fail - will try again in 30 seconds
     }
+  }
+
+  void _showApprovalDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4CAF50).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.check_circle,
+                  color: Color(0xFF4CAF50),
+                  size: 32,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Ваш статус одобрен!',
+                  style: TextStyle(
+                    color: Color(0xFF2E7D32),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Поздравляем!',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF4CAF50),
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Администратор одобрил вашу заявку на роль организатора.\n\nТеперь вы можете создавать проекты и управлять волонтёрами.',
+                style: TextStyle(fontSize: 16, height: 1.5),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).pushReplacementNamed('/organizer');
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4CAF50),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Начать работу',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showRejectionDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.cancel, color: Colors.red, size: 32),
+              SizedBox(width: 12),
+              Text('Заявка отклонена'),
+            ],
+          ),
+          content: const Text(
+            'К сожалению, ваша заявка на роль организатора была отклонена администратором.\n\nВы будете автоматически выведены из системы.',
+            style: TextStyle(fontSize: 16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _logout();
+              },
+              child: const Text(
+                'Понятно',
+                style: TextStyle(fontSize: 16),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _logout() async {

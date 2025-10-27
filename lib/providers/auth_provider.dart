@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'; // ДОБАВЛЕНО: для kDebugMode
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:io' show Platform;
 import '../models/user_model.dart';
+import '../services/api_service.dart';
+import '../services/analytics_service.dart';  // ✅ СредП-16
 
 class AuthProvider with ChangeNotifier {
   String? _token;
@@ -13,6 +16,8 @@ class AuthProvider with ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
 
+  final _storage = const FlutterSecureStorage();
+
   String? get token => _token;
   String? get refreshToken => _refreshToken;
   String? get role => _role;
@@ -21,23 +26,13 @@ class AuthProvider with ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get isAuthenticated => _token != null && _role != null && _user != null;
 
-  // Функция для определения базового URL
-  String getBaseUrl() {
-    if (Platform.isAndroid) {
-      return 'http://10.0.2.2:8000'; // Специальный IP для доступа к localhost из Android эмулятора
-    } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      return 'http://localhost:8000'; // Для desktop платформ используем localhost
-    }
-    return 'http://192.168.0.129:8000'; // Для iOS и других платформ
-  }
-
   // Загрузка сохраненных данных аутентификации
   Future<void> loadAuthData() async {
+    _token = await _storage.read(key: 'token');
+    _refreshToken = await _storage.read(key: 'refresh_token');
+    
     final prefs = await SharedPreferences.getInstance();
-    _token = prefs.getString('token');
-    _refreshToken = prefs.getString('refresh_token');
     _role = prefs.getString('role');
-
     final userJson = prefs.getString('user');
     if (userJson != null) {
       try {
@@ -47,18 +42,55 @@ class AuthProvider with ChangeNotifier {
       }
     }
 
+    // Проверяем валидность токена и обновляем при необходимости
+    if (_token != null && _refreshToken != null) {
+      print('🔍 Проверка валидности токена...');
+      final isValid = await _validateToken();
+      if (!isValid) {
+        print('⚠️ Токен истёк, пробуем обновить...');
+        final refreshed = await refreshAccessToken();
+        if (!refreshed) {
+          print('❌ Не удалось обновить токен, очищаем данные');
+          await clearAuthData();
+        }
+      } else {
+        print('✅ Токен валиден');
+      }
+    }
+
     notifyListeners();
+  }
+
+  // Проверка валидности токена
+  Future<bool> _validateToken() async {
+    if (_token == null) return false;
+
+    try {
+      final response = await http.get(
+        Uri.parse(ApiService.profileUrl),
+        headers: {
+          'Authorization': 'Bearer $_token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('❌ Ошибка проверки токена: $e');
+      return false;
+    }
   }
 
   // Сохранение данных аутентификации
   Future<void> _saveAuthData(String token, String role, Map<String, dynamic> userData, {String? refreshToken}) async {
+    await _storage.write(key: 'token', value: token);
+    
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('token', token);
     await prefs.setString('role', role);
     await prefs.setString('user', jsonEncode(userData));
 
     if (refreshToken != null) {
-      await prefs.setString('refresh_token', refreshToken);
+      await _storage.write(key: 'refresh_token', value: refreshToken);
       _refreshToken = refreshToken;
     }
 
@@ -66,18 +98,29 @@ class AuthProvider with ChangeNotifier {
     _role = role;
     _user = UserModel.fromJson(userData);
 
-    print('🔐 AuthProvider: Сохранены данные - token: ${token.substring(0, 20)}..., role: $role');
-    print('👤 User: ${_user?.name}, approved: ${_user?.isApproved}');
-    print('✅ AuthProvider: isAuthenticated = $isAuthenticated');
+    // ИСПРАВЛЕНО: Не логируем токены в production
+    if (kDebugMode) {
+      print('✅ AuthProvider: Данные сохранены (role: $role)');
+      print('👤 User: ${_user?.name}, approved: ${_user?.isApproved}');
+      print('🔐 isAuthenticated = $isAuthenticated');
+    }
 
     notifyListeners();
-    print('📢 AuthProvider: notifyListeners() вызван');
+    if (kDebugMode) {
+      print('📢 AuthProvider: notifyListeners() вызван');
+    }
   }
 
   // Очистка данных аутентификации
   Future<void> clearAuthData() async {
+    // ✅ ИСПРАВЛЕНИЕ СредП-16: Analytics для выхода
+    await AnalyticsService().logLogout();
+    await AnalyticsService().clearUserData();
+    
+    await _storage.delete(key: 'token');
+    await _storage.delete(key: 'refresh_token');
+
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('token');
     await prefs.remove('role');
     await prefs.remove('user');
     _token = null;
@@ -96,7 +139,7 @@ class AuthProvider with ChangeNotifier {
     try {
       print('🔄 Начинаем вход...');
       print('📧 Email: $email');
-      final url = '${getBaseUrl()}/custom-admin/api/login/';
+      final url = ApiService.loginUrl;
       print('🌐 URL: $url');
       final response = await http.post(
         Uri.parse(url),
@@ -120,6 +163,15 @@ class AuthProvider with ChangeNotifier {
 
         if (token != null && role != null && userData != null) {
           await _saveAuthData(token, role, userData, refreshToken: refresh);
+          
+          // ✅ ИСПРАВЛЕНИЕ СредП-16: Analytics для входа
+          await AnalyticsService().logLogin(method: 'email');
+          await AnalyticsService().setUserId(userData['id'].toString());
+          await AnalyticsService().setUserProperties(
+            role: role,
+            rating: userData['rating'],
+          );
+          
           _isLoading = false;
           notifyListeners();
           return true;
@@ -141,25 +193,33 @@ class AuthProvider with ChangeNotifier {
   }
 
   // Регистрация
-  Future<bool> register(String email, String password, String name, String phone, String role) async {
+  Future<bool> register(String email, String password, String name, String phone, String role, {String? organizationName}) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
+      final requestData = {
+        'name': name,
+        'email': email,
+        'phone': phone,
+        'password1': password,
+        'password2': password,
+        'role': role,
+        'registration_source': 'mobile_app',
+      };
+      
+      // Добавляем organization_name если роль организатор
+      if (role == 'organizer' && organizationName != null && organizationName.isNotEmpty) {
+        requestData['organization_name'] = organizationName;
+      }
+
       final response = await http.post(
-        Uri.parse('${getBaseUrl()}/custom-admin/api/register/'),
+        Uri.parse(ApiService.registerUrl),
         headers: {
           'Content-Type': 'application/json',
         },
-        body: jsonEncode({
-          'name': name,
-          'email': email,
-          'phone': phone,
-          'password1': password,
-          'password2': password,
-          'role': role,
-        }),
+        body: jsonEncode(requestData),
       );
 
       print('📡 Register response: ${response.statusCode}');
@@ -173,6 +233,12 @@ class AuthProvider with ChangeNotifier {
 
         if (token != null && userData != null) {
           await _saveAuthData(token, role, userData, refreshToken: refresh);
+          
+          // ✅ ИСПРАВЛЕНИЕ СредП-16: Analytics для регистрации
+          await AnalyticsService().logSignUp(method: 'email', role: role);
+          await AnalyticsService().setUserId(userData['id'].toString());
+          await AnalyticsService().setUserProperties(role: role);
+          
           _isLoading = false;
           notifyListeners();
           return true;
@@ -204,7 +270,7 @@ class AuthProvider with ChangeNotifier {
 
     try {
       final response = await http.get(
-        Uri.parse('${getBaseUrl()}/custom-admin/api/profile/'),
+        Uri.parse(ApiService.profileUrl),
         headers: {
           'Authorization': 'Bearer $_token',
           'Content-Type': 'application/json',
@@ -239,7 +305,7 @@ class AuthProvider with ChangeNotifier {
 
     try {
       final response = await http.post(
-        Uri.parse('${getBaseUrl()}/custom-admin/api/token/refresh/'),
+        Uri.parse(ApiService.tokenRefreshUrl),
         headers: {
           'Content-Type': 'application/json',
         },
@@ -255,8 +321,7 @@ class AuthProvider with ChangeNotifier {
         final newAccessToken = data['access'];
 
         if (newAccessToken != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('token', newAccessToken);
+          await _storage.write(key: 'token', value: newAccessToken);
           _token = newAccessToken;
           notifyListeners();
           print('✅ Access token успешно обновлён');
@@ -279,7 +344,7 @@ class AuthProvider with ChangeNotifier {
 
     try {
       final response = await http.get(
-        Uri.parse('${getBaseUrl()}/custom-admin/api/profile/'),
+        Uri.parse(ApiService.profileUrl),
         headers: {
           'Authorization': 'Bearer $_token',
           'Content-Type': 'application/json',

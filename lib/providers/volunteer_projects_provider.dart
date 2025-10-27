@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:io' show Platform;
+import '../config/app_config.dart';
 import 'auth_provider.dart';
+import '../services/auth_http_client.dart';
 
 // Модель проекта
 class Project {
@@ -79,6 +81,7 @@ class Project {
 
 class VolunteerProjectsProvider with ChangeNotifier {
   final AuthProvider _authProvider;
+  late final AuthHttpClient _httpClient;
 
   List<Project> _projects = [];
   bool _isLoading = false;
@@ -89,6 +92,8 @@ class VolunteerProjectsProvider with ChangeNotifier {
   String? get errorMessage => _errorMessage;
 
   VolunteerProjectsProvider(this._authProvider) {
+    // ✅ Создаём HTTP клиент с автоматическим token refresh
+    _httpClient = AuthHttpClient(_authProvider);
     // Слушаем изменения в аутентификации
     _authProvider.addListener(_onAuthChanged);
   }
@@ -110,12 +115,8 @@ class VolunteerProjectsProvider with ChangeNotifier {
   }
 
   String _getBaseUrl() {
-    if (Platform.isAndroid) {
-      return 'http://10.0.2.2:8000';
-    } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      return 'http://localhost:8000';
-    }
-    return 'http://192.168.0.129:8000';
+    // Используем конфигурацию из app_config.dart
+    return AppConfig.apiBaseUrl;
   }
 
   Future<void> loadProjects() async {
@@ -126,12 +127,9 @@ class VolunteerProjectsProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await http.get(
+      // ✅ Используем AuthHttpClient с автоматическим token refresh
+      final response = await _httpClient.get(
         Uri.parse('${_getBaseUrl()}/custom-admin/api/projects/'),
-        headers: {
-          'Authorization': 'Bearer ${_authProvider.token}',
-          'Content-Type': 'application/json',
-        },
       );
 
       if (response.statusCode == 200) {
@@ -161,12 +159,9 @@ class VolunteerProjectsProvider with ChangeNotifier {
     }
 
     try {
-      final response = await http.post(
+      // ✅ Используем AuthHttpClient с автоматическим token refresh
+      final response = await _httpClient.post(
         Uri.parse('${_getBaseUrl()}/custom-admin/api/projects/$projectId/join/'),
-        headers: {
-          'Authorization': 'Bearer ${_authProvider.token}',
-          'Content-Type': 'application/json',
-        },
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -206,12 +201,9 @@ class VolunteerProjectsProvider with ChangeNotifier {
     }
 
     try {
-      final response = await http.post(
+      // ✅ Используем AuthHttpClient с автоматическим token refresh
+      final response = await _httpClient.post(
         Uri.parse('${_getBaseUrl()}/custom-admin/api/projects/$projectId/leave/'),
-        headers: {
-          'Authorization': 'Bearer ${_authProvider.token}',
-          'Content-Type': 'application/json',
-        },
       );
 
       if (response.statusCode == 200) {

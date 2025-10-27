@@ -3,15 +3,30 @@ import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'main.dart';
 import 'notification_service.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'config/app_config.dart';
 import 'providers/auth_provider.dart';
 import 'providers/volunteer_projects_provider.dart';
 import 'services/api_service.dart';
 import 'providers/volunteer_tasks_provider.dart';
+import 'providers/achievements_provider.dart';
+import 'providers/activity_provider.dart';
 import 'widgets/volunteer_type_badge.dart';
+import 'widgets/submit_photo_report_dialog.dart';
+import 'widgets/skeleton_loader.dart';
+import 'widgets/swipeable_task_card.dart';
+import 'widgets/filter_chip.dart';
+import 'widgets/pull_to_refresh.dart';
+import 'widgets/empty_state.dart';
+import 'widgets/search_bar_widget.dart';
+import 'widgets/statistics_card.dart';
+import 'widgets/app_avatar.dart';
+import 'widgets/progress_bar.dart';
+import 'utils/page_transitions.dart';
 import 'screens/auth_screen.dart';
+import 'screens/achievements_gallery_screen.dart';
+import 'models/achievement.dart';
 
 
 class VolunteerPage extends StatefulWidget {
@@ -23,7 +38,9 @@ class VolunteerPage extends StatefulWidget {
 
 class _VolunteerPageState extends State<VolunteerPage> {
     int _selectedIndex = 0;
-    String? _selectedFilter; // null = all, 'social', 'environmental', 'cultural' 
+    String? _selectedFilter; // null = all, 'social', 'environmental', 'cultural'
+    String _searchQuery = ''; // Поисковый запрос
+    Map<int, Map<String, dynamic>> _taskPhotos = {}; // Кэш фото для задач
 
     @override
     void initState() {
@@ -31,9 +48,56 @@ class _VolunteerPageState extends State<VolunteerPage> {
       _setupNotificationListeners();
       // Загружаем данные при инициализации
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Отправляем FCM токен на сервер
+        _sendFCMTokenToServer();
+
         context.read<VolunteerProjectsProvider>().loadProjects();
         context.read<VolunteerTasksProvider>().loadTasks();
+        context.read<AchievementsProvider>().loadAchievements();
+        context.read<ActivityProvider>().loadActivities();
       });
+    }
+
+    // ИСПРАВЛЕНО: Добавлен dispose для очистки памяти
+    @override
+    void dispose() {
+      _taskPhotos.clear(); // Очищаем кэш фото, чтобы избежать утечки памяти
+      super.dispose();
+    }
+
+    Future<void> _sendFCMTokenToServer() async {
+      final authProvider = context.read<AuthProvider>();
+      final token = authProvider.token;
+
+      if (token != null && token.isNotEmpty) {
+        print('🔐 Volunteer page: Sending FCM token to server');
+        await NotificationService().setAuthToken(token);
+      } else {
+        print('⚠️ Volunteer page: No auth token available');
+      }
+    }
+
+    Future<Map<String, dynamic>> _loadTaskPhotos(int taskId) async {
+      final token = context.read<AuthProvider>().token;
+      if (token == null) return {'has_photos': false};
+
+      try {
+        final response = await http.get(
+          Uri.parse('${ApiService.apiBase}/tasks/$taskId/photos/'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+        );
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          return data as Map<String, dynamic>;
+        }
+      } catch (e) {
+        print('Ошибка загрузки фото задачи: $e');
+      }
+      return {'has_photos': false};
     }
 
     void _setupNotificationListeners() {
@@ -44,8 +108,11 @@ class _VolunteerPageState extends State<VolunteerPage> {
         if (message.data['type'] == 'task_assigned' ||
             message.data['type'] == 'project_deleted' ||
             message.data['type'] == 'photo_rejected') {
-          context.read<VolunteerProjectsProvider>().loadProjects();
-          context.read<VolunteerTasksProvider>().loadTasks();
+          // Проверяем mounted перед использованием context
+          if (mounted) {
+            context.read<VolunteerProjectsProvider>().loadProjects();
+            context.read<VolunteerTasksProvider>().loadTasks();
+          }
         }
       });
 
@@ -53,8 +120,10 @@ class _VolunteerPageState extends State<VolunteerPage> {
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         print('📱 Volunteer page: Открыто уведомление из background');
         // Обновить данные при открытии уведомления
-        context.read<VolunteerProjectsProvider>().loadProjects();
-        context.read<VolunteerTasksProvider>().loadTasks();
+        if (mounted) {
+          context.read<VolunteerProjectsProvider>().loadProjects();
+          context.read<VolunteerTasksProvider>().loadTasks();
+        }
       });
     }
 
@@ -66,7 +135,7 @@ class _VolunteerPageState extends State<VolunteerPage> {
 
     try {
       final response = await http.get(
-        Uri.parse('http://10.0.2.2:8000/custom-admin/api/profile/'),
+        Uri.parse('${AppConfig.profileUrl}'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -108,7 +177,7 @@ class _VolunteerPageState extends State<VolunteerPage> {
         },
       );
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -120,6 +189,7 @@ class _VolunteerPageState extends State<VolunteerPage> {
         // Обновить данные через провайдеры
         context.read<VolunteerProjectsProvider>().loadProjects();
         context.read<VolunteerTasksProvider>().loadTasks();
+        context.read<ActivityProvider>().loadActivities(); // Обновить активности
       } else {
         final data = jsonDecode(response.body);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -160,6 +230,7 @@ class _VolunteerPageState extends State<VolunteerPage> {
         // Обновить данные через провайдеры
         context.read<VolunteerProjectsProvider>().loadProjects();
         context.read<VolunteerTasksProvider>().loadTasks();
+        context.read<ActivityProvider>().loadActivities(); // Обновить активности
       } else {
         final data = jsonDecode(response.body);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -182,10 +253,12 @@ class _VolunteerPageState extends State<VolunteerPage> {
      await prefs.remove('token');
      await prefs.remove('role');
 
-     Navigator.pushReplacement(
-       context,
-       MaterialPageRoute(builder: (context) => const AuthScreen()),
-     );
+     if (mounted) {
+       Navigator.pushReplacement(
+         context,
+         PageTransitions.fade(const AuthScreen()),
+       );
+     }
    }
 
   String _getStatusText(String status, Task? task) {
@@ -349,12 +422,222 @@ class _VolunteerPageState extends State<VolunteerPage> {
     return 'Доступно';
   }
 
+  Future<int> _getPhotoCount() async {
+    final token = context.read<AuthProvider>().token;
+    if (token == null) return 0;
+
+    try {
+      final response = await http.get(
+        Uri.parse('${ApiService.apiBase}/photo-reports/'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['total_count'] ?? 0;
+      }
+    } catch (e) {
+      print('Ошибка получения количества фото: $e');
+    }
+    return 0;
+  }
+
+  void _showSubmitPhotoReportDialog(dynamic task) {
+    showDialog(
+      context: context,
+      builder: (context) => SubmitPhotoReportDialog(
+        taskId: task.id,
+        taskText: task.text,
+        projectTitle: task.projectTitle,
+      ),
+    ).then((result) {
+      if (result == true) {
+        // Обновляем задачи после успешной отправки
+        context.read<VolunteerTasksProvider>().loadTasks();
+      }
+    });
+  }
+
+  Future<void> _acceptTask(int taskId) async {
+    final token = context.read<AuthProvider>().token;
+    if (token == null) return;
+
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiService.apiBase}/tasks/$taskId/accept/'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(data['message'] ?? 'Вы взялись за задачу!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Обновляем задачи
+        context.read<VolunteerTasksProvider>().loadTasks();
+      } else {
+        final data = jsonDecode(response.body);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(data['error'] ?? 'Ошибка при принятии задачи'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Ошибка принятия задачи: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ошибка подключения к серверу'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _declineTask(int taskId) async {
+    // Просто показываем подтверждение, что задача отклонена
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline, color: Color(0xFF2196F3)),
+            SizedBox(width: 12),
+            Text('Отклонить задачу'),
+          ],
+        ),
+        content: const Text(
+          'Вы можете вернуться к этой задаче позже, если передумаете.',
+          style: TextStyle(fontSize: 16),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF4CAF50),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Понятно'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Задача отклонена. Вы можете взяться за неё позже'),
+          backgroundColor: Colors.blue,
+        ),
+      );
+    }
+  }
+
+  // Вспомогательные методы для статусов фотоотчётов
+  Color _getPhotoStatusColor(String status) {
+    switch (status) {
+      case 'approved':
+        return const Color(0xFFE8F5E9);
+      case 'rejected':
+        return const Color(0xFFFFEBEE);
+      case 'pending':
+        return const Color(0xFFFFF8E1);
+      default:
+        return Colors.grey[100]!;
+    }
+  }
+
+  Color _getPhotoStatusBorderColor(String status) {
+    switch (status) {
+      case 'approved':
+        return const Color(0xFF4CAF50);
+      case 'rejected':
+        return const Color(0xFFF44336);
+      case 'pending':
+        return const Color(0xFFFFC107);
+      default:
+        return Colors.grey[300]!;
+    }
+  }
+
+  IconData _getPhotoStatusIcon(String status) {
+    switch (status) {
+      case 'approved':
+        return Icons.check_circle;
+      case 'rejected':
+        return Icons.cancel;
+      case 'pending':
+        return Icons.hourglass_empty;
+      default:
+        return Icons.info;
+    }
+  }
+
+  Color _getPhotoStatusIconColor(String status) {
+    switch (status) {
+      case 'approved':
+        return const Color(0xFF4CAF50);
+      case 'rejected':
+        return const Color(0xFFF44336);
+      case 'pending':
+        return const Color(0xFFFFC107);
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _getPhotoStatusText(String status) {
+    switch (status) {
+      case 'approved':
+        return 'Фотоотчёт одобрен';
+      case 'rejected':
+        return 'Фотоотчёт отклонён';
+      case 'pending':
+        return 'Ожидает проверки';
+      default:
+        return 'Неизвестный статус';
+    }
+  }
+
+  Color _getPhotoStatusTextColor(String status) {
+    switch (status) {
+      case 'approved':
+        return const Color(0xFF2E7D32);
+      case 'rejected':
+        return const Color(0xFFC62828);
+      case 'pending':
+        return const Color(0xFFF57C00);
+      default:
+        return Colors.black87;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'TazaQala',
+          'BirQadam',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: Color(0xFF2E7D32),
@@ -417,22 +700,35 @@ class _VolunteerPageState extends State<VolunteerPage> {
     final projectsProvider = context.watch<VolunteerProjectsProvider>();
 
     if (projectsProvider.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const ListSkeleton(
+        itemSkeleton: ProjectCardSkeleton(),
+        itemCount: 5,
+      );
     }
 
-    // Apply filter
-    final filteredProjects = _selectedFilter == null
+    // Apply filter and search
+    var filteredProjects = _selectedFilter == null
         ? projectsProvider.projects
         : projectsProvider.projects.where((p) => p.volunteerType == _selectedFilter).toList();
 
-    if (filteredProjects.isEmpty && _selectedFilter == null) {
-      return RefreshIndicator(
+    // Apply search
+    if (_searchQuery.isNotEmpty) {
+      filteredProjects = filteredProjects.where((p) =>
+        p.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+        p.description.toLowerCase().contains(_searchQuery.toLowerCase())
+      ).toList();
+    }
+
+    if (filteredProjects.isEmpty && _selectedFilter == null && _searchQuery.isEmpty) {
+      return AppPullToRefresh(
         onRefresh: projectsProvider.loadProjects,
         child: ListView(
-          children: const [
-            SizedBox(height: 100),
-            Center(
-              child: Text('Нет доступных проектов\n\nПотяните вниз для обновления'),
+          children: [
+            const SizedBox(height: 100),
+            EmptyState(
+              icon: Icons.eco,
+              title: 'Нет доступных проектов',
+              message: 'Потяните вниз для обновления',
             ),
           ],
         ),
@@ -441,86 +737,70 @@ class _VolunteerPageState extends State<VolunteerPage> {
 
     return Column(
       children: [
-        // Filter chips
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                FilterChip(
-                  label: const Text('Все'),
-                  selected: _selectedFilter == null,
-                  onSelected: (selected) {
-                    setState(() {
-                      _selectedFilter = null;
-                    });
-                  },
-                  selectedColor: const Color(0xFF4CAF50).withValues(alpha: 0.2),
-                  checkmarkColor: const Color(0xFF4CAF50),
-                ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  label: const Text('Социальная помощь'),
-                  selected: _selectedFilter == 'social',
-                  onSelected: (selected) {
-                    setState(() {
-                      _selectedFilter = selected ? 'social' : null;
-                    });
-                  },
-                  selectedColor: const Color(0xFFE91E63).withValues(alpha: 0.2),
-                  checkmarkColor: const Color(0xFFE91E63),
-                ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  label: const Text('Экологические'),
-                  selected: _selectedFilter == 'environmental',
-                  onSelected: (selected) {
-                    setState(() {
-                      _selectedFilter = selected ? 'environmental' : null;
-                    });
-                  },
-                  selectedColor: const Color(0xFF4CAF50).withValues(alpha: 0.2),
-                  checkmarkColor: const Color(0xFF4CAF50),
-                ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  label: const Text('Культурные'),
-                  selected: _selectedFilter == 'cultural',
-                  onSelected: (selected) {
-                    setState(() {
-                      _selectedFilter = selected ? 'cultural' : null;
-                    });
-                  },
-                  selectedColor: const Color(0xFF9C27B0).withValues(alpha: 0.2),
-                  checkmarkColor: const Color(0xFF9C27B0),
-                ),
-              ],
-            ),
+        // Search bar
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: SearchBarWidget(
+            hintText: 'Поиск проектов...',
+            onSearch: (value) {
+              setState(() {
+                _searchQuery = value;
+              });
+            },
+            showFilter: false,
           ),
         ),
-        // Empty state if filtered and no results
-        if (filteredProjects.isEmpty && _selectedFilter != null)
-          const Expanded(
-            child: Center(
-              child: Text('Нет проектов данного типа'),
+
+        // Filter chips using new FilterChipList
+        FilterChipList(
+          options: const [
+            FilterOption(label: 'Все', value: 'all', icon: Icons.apps),
+            FilterOption(label: 'Социальная', value: 'social', icon: Icons.handshake),
+            FilterOption(label: 'Экологическая', value: 'environmental', icon: Icons.eco),
+            FilterOption(label: 'Культурная', value: 'cultural', icon: Icons.theater_comedy),
+          ],
+          selectedValue: _selectedFilter ?? 'all',
+          onSelected: (value) {
+            setState(() {
+              _selectedFilter = value == 'all' ? null : value;
+            });
+          },
+        ),
+
+        const SizedBox(height: 8),
+
+        // Empty state if filtered/searched and no results
+        if (filteredProjects.isEmpty)
+          Expanded(
+            child: EmptyState(
+              icon: _searchQuery.isNotEmpty ? Icons.search_off : Icons.filter_alt_off,
+              title: _searchQuery.isNotEmpty
+                  ? 'Ничего не найдено'
+                  : 'Нет проектов данного типа',
+              message: _searchQuery.isNotEmpty
+                  ? 'Попробуйте изменить запрос'
+                  : 'Выберите другой фильтр',
             ),
           ),
         // Projects list
         if (filteredProjects.isNotEmpty)
           Expanded(
-            child: RefreshIndicator(
+            child: AppPullToRefresh(
               onRefresh: projectsProvider.loadProjects,
               child: ListView.builder(
         itemCount: filteredProjects.length,
         itemBuilder: (context, index) {
           final project = filteredProjects[index];
-          return Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            elevation: 4,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
+          return Hero(
+            tag: 'project_${project.id}',
+            child: Material(
+              type: MaterialType.transparency,
+              child: Card(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -637,6 +917,8 @@ class _VolunteerPageState extends State<VolunteerPage> {
                 ],
               ),
             ),
+              ),
+            ),
           );
         },
               ),
@@ -650,7 +932,10 @@ class _VolunteerPageState extends State<VolunteerPage> {
     final tasksProvider = context.watch<VolunteerTasksProvider>();
 
     if (tasksProvider.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const ListSkeleton(
+        itemSkeleton: TaskCardSkeleton(),
+        itemCount: 8,
+      );
     }
 
     if (tasksProvider.tasks.isEmpty) {
@@ -673,7 +958,13 @@ class _VolunteerPageState extends State<VolunteerPage> {
         itemCount: tasksProvider.tasks.length,
         itemBuilder: (context, index) {
           final task = tasksProvider.tasks[index];
-          return Card(
+          return SwipeableTaskCard(
+            onComplete: task.isAssigned && !_isTaskClosed(task)
+                ? () => _showSubmitPhotoReportDialog(task)
+                : null,
+            canComplete: task.isAssigned && !_isTaskClosed(task),
+            canDelete: false,
+            child: Card(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             elevation: 3,
             shape: RoundedRectangleBorder(
@@ -684,6 +975,7 @@ class _VolunteerPageState extends State<VolunteerPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Название проекта - шапка
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -692,11 +984,11 @@ class _VolunteerPageState extends State<VolunteerPage> {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.business, size: 20, color: const Color(0xFF4CAF50)),
+                        const Icon(Icons.business, size: 20, color: Color(0xFF4CAF50)),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            task.projectTitle,
+                            'Проект "${task.projectTitle}"',
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -717,6 +1009,7 @@ class _VolunteerPageState extends State<VolunteerPage> {
                     ),
                   ),
                   const SizedBox(height: 16),
+                  // Информация об организаторе
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -725,28 +1018,15 @@ class _VolunteerPageState extends State<VolunteerPage> {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.person, size: 18, color: const Color(0xFF4CAF50)),
+                        const Icon(Icons.person, size: 18, color: Color(0xFF4CAF50)),
                         const SizedBox(width: 8),
-                        Text(
-                          task.creatorName,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: _getTaskAvailabilityColor(task),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+                        Expanded(
                           child: Text(
-                            _getTaskAvailabilityText(task),
+                            'Организатор: ${task.creatorName.isEmpty ? "Неизвестно" : task.creatorName}',
                             style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                              color: Colors.black87,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ),
@@ -760,7 +1040,7 @@ class _VolunteerPageState extends State<VolunteerPage> {
                       decoration: BoxDecoration(
                         color: const Color(0xFFFFF3E0),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFFF9800).withOpacity(0.3)),
+                        border: Border.all(color: const Color(0xFFFF9800).withValues(alpha: 0.3)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -802,6 +1082,264 @@ class _VolunteerPageState extends State<VolunteerPage> {
                     ),
                   ],
                   const SizedBox(height: 16),
+
+                  // Кнопки действий для доступных задач
+                  if (!task.isAssigned && !_isTaskClosed(task)) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () => _acceptTask(task.id),
+                            icon: const Icon(Icons.check_circle, size: 20),
+                            label: const Text('Взяться за работу'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF4CAF50),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 2,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => _declineTask(task.id),
+                            icon: const Icon(Icons.cancel, size: 20),
+                            label: const Text('Отклонить'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFFF44336),
+                              side: const BorderSide(color: Color(0xFFF44336), width: 2),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // Кнопка отправки фотоотчета или статус фотоотчёта (только для назначенных задач)
+                  if (task.isAssigned && !_isTaskClosed(task))
+                    FutureBuilder<Map<String, dynamic>>(
+                      future: _loadTaskPhotos(task.id),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            child: const Center(child: CircularProgressIndicator()),
+                          );
+                        }
+
+                        final photoData = snapshot.data;
+                        final hasPhotos = photoData?['has_photos'] == true;
+                        final status = photoData?['latest_status'] ?? '';
+                        final rating = photoData?['latest_rating'];
+                        final organizerComment = photoData?['latest_organizer_comment'] ?? '';
+                        final rejectionReason = photoData?['latest_rejection_reason'] ?? '';
+
+                        // Если уже есть фотоотчёт, показываем статус
+                        if (hasPhotos) {
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: _getPhotoStatusColor(status),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: _getPhotoStatusBorderColor(status),
+                                width: 2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: _getPhotoStatusBorderColor(status).withValues(alpha: 0.2),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: _getPhotoStatusIconColor(status).withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Icon(
+                                        _getPhotoStatusIcon(status),
+                                        color: _getPhotoStatusIconColor(status),
+                                        size: 24,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            _getPhotoStatusText(status),
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: _getPhotoStatusTextColor(status),
+                                            ),
+                                          ),
+                                          if (status == 'pending')
+                                            Text(
+                                              'Организатор проверяет ваш отчёт',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey[600],
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (rating != null)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFFF8E1),
+                                          borderRadius: BorderRadius.circular(20),
+                                          border: Border.all(
+                                            color: const Color(0xFFFFC107),
+                                            width: 1.5,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.star, color: Color(0xFFFFC107), size: 18),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              '$rating',
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: Color(0xFFF57C00),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                if (status == 'approved' && organizerComment.isNotEmpty) ...[
+                                  const SizedBox(height: 12),
+                                  Divider(color: Colors.grey[300]),
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: const Color(0xFF4CAF50).withValues(alpha: 0.3)),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Row(
+                                          children: [
+                                            Icon(Icons.chat_bubble_outline, size: 16, color: Color(0xFF4CAF50)),
+                                            SizedBox(width: 6),
+                                            Text(
+                                              'Комментарий организатора:',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: Color(0xFF2E7D32),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          organizerComment,
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.black87,
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                                if (status == 'rejected' && rejectionReason.isNotEmpty) ...[
+                                  const SizedBox(height: 12),
+                                  Divider(color: Colors.grey[300]),
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFFEBEE),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: const Color(0xFFF44336).withValues(alpha: 0.3)),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Row(
+                                          children: [
+                                            Icon(Icons.warning_amber_rounded, size: 16, color: Color(0xFFF44336)),
+                                            SizedBox(width: 6),
+                                            Text(
+                                              'Причина отклонения:',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: Color(0xFFC62828),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          rejectionReason,
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.black87,
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          );
+                        }
+
+                        // Если фотоотчёта нет, показываем кнопку отправки
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _showSubmitPhotoReportDialog(task),
+                            icon: const Icon(Icons.photo_camera, size: 20),
+                            label: const Text('Отправить фотоотчет'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2196F3),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 2,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
@@ -829,6 +1367,7 @@ class _VolunteerPageState extends State<VolunteerPage> {
                   ),
                 ],
               ),
+            ),
             ),
           );
         },
@@ -862,7 +1401,7 @@ class _VolunteerPageState extends State<VolunteerPage> {
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.green.withOpacity(0.1),
+                    color: Colors.green.withValues(alpha: 0.1),
                     blurRadius: 10,
                     offset: const Offset(0, 5),
                   ),
@@ -870,49 +1409,62 @@ class _VolunteerPageState extends State<VolunteerPage> {
               ),
               child: Column(
                 children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF4CAF50),
-                      borderRadius: BorderRadius.circular(40),
-                    ),
-                    child: const Icon(
-                      Icons.person,
-                      size: 40,
-                      color: Colors.white,
-                    ),
+                  // Новый красивый аватар
+                  FutureBuilder<Map<String, dynamic>?>(
+                    future: _getUserProfile(),
+                    builder: (context, snapshot) {
+                      final userName = snapshot.data?['name'] ?? 'Волонтёр';
+                      
+                      return AppAvatar(
+                        name: userName,
+                        size: 80,
+                        showBorder: true,
+                      );
+                    },
                   ),
                   const SizedBox(height: 16),
                   FutureBuilder<Map<String, dynamic>?>(
                     future: _getUserProfile(),
                     builder: (context, snapshot) {
                       final userName = snapshot.data?['name'] ?? 'Волонтёр';
-                      return Text(
-                        userName,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF2E7D32),
-                        ),
-                        textAlign: TextAlign.center,
+                      final rating = snapshot.data?['rating'] ?? 0;
+
+                      return Column(
+                        children: [
+                          Text(
+                            userName,
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF2E7D32),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFC107),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.star, color: Colors.white, size: 18),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Рейтинг: $rating',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       );
                     },
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFC107),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text(
-                      '⭐ Рейтинг: 0',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
                   ),
                 ],
               ),
@@ -920,43 +1472,45 @@ class _VolunteerPageState extends State<VolunteerPage> {
 
             const SizedBox(height: 24),
 
-            // Статистика
+            // Достижения
+            _buildAchievementsSection(),
+
+            const SizedBox(height: 24),
+
+            // Последняя активность
+            _buildActivitySection(),
+
+            const SizedBox(height: 24),
+
+            // Статистика (компактный дизайн - 3 карточки)
             Row(
               children: [
                 Expanded(
-                  child: _buildStatCard(
+                  child: _buildCompactStatCard(
                     'Проекты',
                     context.watch<VolunteerProjectsProvider>().projects.where((p) => p.isJoined).length.toString(),
-                    Icons.business,
+                    Icons.folder_open,
                     const Color(0xFF4CAF50),
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: _buildStatCard(
+                  child: _buildCompactStatCard(
                     'Задачи',
                     context.watch<VolunteerTasksProvider>().tasks.where((t) => t.isAssigned).length.toString(),
                     Icons.task_alt,
                     const Color(0xFF2196F3),
                   ),
                 ),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            Row(
-              children: [
+                const SizedBox(width: 12),
                 Expanded(
-                  child: _buildStatCard(
+                  child: _buildCompactStatCard(
                     'Фото',
                     '0',
                     Icons.photo_camera,
                     const Color(0xFFFF9800),
                   ),
                 ),
-                const SizedBox(width: 16),
-                // Убрали награды как просил пользователь
               ],
             ),
 
@@ -970,7 +1524,7 @@ class _VolunteerPageState extends State<VolunteerPage> {
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.green.withOpacity(0.1),
+                    color: Colors.green.withValues(alpha: 0.1),
                     blurRadius: 10,
                     offset: const Offset(0, 5),
                   ),
@@ -989,7 +1543,7 @@ class _VolunteerPageState extends State<VolunteerPage> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'TazaQala - приложение для волонтеров, которые хотят сделать наш город чище и лучше.',
+                    'BirQadam - Объединить людей, готовых сделать шаг к улучшению общества.',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey[600],
@@ -1053,7 +1607,7 @@ class _VolunteerPageState extends State<VolunteerPage> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.green.withOpacity(0.1),
+            color: Colors.green.withValues(alpha: 0.1),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -1086,6 +1640,462 @@ class _VolunteerPageState extends State<VolunteerPage> {
           ),
         ],
       ),
+    );
+  }
+
+  // Компактная карточка статистики (меньше размер)
+  Widget _buildCompactStatCard(String title, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            color.withValues(alpha: 0.1),
+            color.withValues(alpha: 0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: color.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            color: color,
+            size: 24,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey[700],
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+  Widget _buildAchievementsSection() {
+    final achievementsProvider = context.watch<AchievementsProvider>();
+
+    if (achievementsProvider.isLoading) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.green.withValues(alpha: 0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final achievements = achievementsProvider.achievements;
+
+    // Показываем хотя бы 2 достижения (последнее разблокированное и первое заблокированное)
+    final unlockedAchievements = achievements.where((a) => a.isUnlocked).toList()
+      ..sort((a, b) => b.requiredRating.compareTo(a.requiredRating)); // Сортируем по убыванию рейтинга
+    final lockedAchievements = achievements.where((a) => !a.isUnlocked).toList()
+      ..sort((a, b) => a.requiredRating.compareTo(b.requiredRating)); // Сортируем по возрастанию рейтинга
+
+    final currentUnlocked = unlockedAchievements.isNotEmpty
+        ? unlockedAchievements.first // Берем последнее разблокированное (с наибольшим рейтингом)
+        : null;
+
+    return FutureBuilder<Map<String, dynamic>?>(
+      future: _getUserProfile(),
+      builder: (context, snapshot) {
+        final rating = snapshot.data?['rating'] ?? 0;
+
+        // Определяем следующее достижение на основе рейтинга
+        Achievement? nextAchievement;
+        int nextRatingThreshold = 100; // По умолчанию 100 для "Помощник"
+        int currentRatingThreshold = 0; // Порог текущего уровня
+
+        // Находим следующее заблокированное достижение
+        final sortedLockedAchievements = lockedAchievements
+          ..sort((a, b) => a.requiredRating.compareTo(b.requiredRating));
+
+        if (sortedLockedAchievements.isNotEmpty) {
+          nextAchievement = sortedLockedAchievements.first;
+          nextRatingThreshold = nextAchievement.requiredRating;
+
+          // Находим порог текущего уровня (последнее разблокированное достижение)
+          final sortedUnlockedAchievements = unlockedAchievements
+            ..sort((a, b) => b.requiredRating.compareTo(a.requiredRating));
+
+          if (sortedUnlockedAchievements.isNotEmpty) {
+            currentRatingThreshold = sortedUnlockedAchievements.first.requiredRating;
+          }
+        }
+
+        // Вычисляем прогресс на основе рейтинга между уровнями
+        double ratingProgress = 0.0;
+        int ratingRange = nextRatingThreshold - currentRatingThreshold;
+        int ratingInCurrentRange = rating - currentRatingThreshold;
+
+        if (ratingRange > 0) {
+          ratingProgress = (ratingInCurrentRange / ratingRange).clamp(0.0, 1.0);
+        }
+
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.green.withValues(alpha: 0.1),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Достижения',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2E7D32),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        PageTransitions.scale(const AchievementsGalleryScreen()),
+                      );
+                    },
+                    icon: const Icon(Icons.grid_view, size: 18),
+                    label: const Text('Все'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF4CAF50),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Достижения
+              Row(
+                children: [
+                  Expanded(
+                    child: currentUnlocked != null
+                        ? _buildAchievementBadge(
+                            title: currentUnlocked.name,
+                            xp: '+${currentUnlocked.xp} XP',
+                            isUnlocked: true,
+                            icon: Icons.star,
+                            color: const Color(0xFFFFC107),
+                          )
+                        : _buildAchievementBadge(
+                            title: 'Новичок',
+                            xp: '+100 XP',
+                            isUnlocked: true,
+                            icon: Icons.star,
+                            color: const Color(0xFFFFC107),
+                          ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: nextAchievement != null
+                        ? _buildAchievementBadge(
+                            title: nextAchievement.name,
+                            xp: '????',
+                            isUnlocked: false,
+                            icon: Icons.lock,
+                            color: Colors.grey,
+                          )
+                        : _buildAchievementBadge(
+                            title: 'Помощник',
+                            xp: '????',
+                            isUnlocked: false,
+                            icon: Icons.lock,
+                            color: Colors.grey,
+                          ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Прогресс
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      nextAchievement != null
+                          ? 'Прогресс до "${nextAchievement.name}"'
+                          : 'Прогресс до следующего уровня',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                  Text(
+                    nextAchievement != null
+                        ? '$rating/$nextRatingThreshold'
+                        : '$rating',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF4CAF50),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: LinearProgressIndicator(
+                  value: ratingProgress,
+                  minHeight: 8,
+                  backgroundColor: Colors.grey[200],
+                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF4CAF50)),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAchievementBadge({
+    required String title,
+    required String xp,
+    required bool isUnlocked,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isUnlocked ? const Color(0xFFFFF9E6) : Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isUnlocked ? const Color(0xFFFFC107) : Colors.grey.shade300,
+          width: 2,
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            icon,
+            size: 40,
+            color: color,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: isUnlocked ? const Color(0xFFF57C00) : Colors.grey[600],
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            xp,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isUnlocked ? const Color(0xFF4CAF50) : Colors.grey[500],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActivitySection() {
+    final activityProvider = context.watch<ActivityProvider>();
+
+    if (activityProvider.isLoading) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.green.withValues(alpha: 0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final activities = activityProvider.getRecentActivities(3);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.withValues(alpha: 0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Последняя активность',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2E7D32),
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (activities.isEmpty)
+            const Center(
+              child: Text(
+                'Нет активности',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                ),
+              ),
+            )
+          else
+            ...activities.asMap().entries.map((entry) {
+              final index = entry.key;
+              final activity = entry.value;
+              return Column(
+                children: [
+                  if (index > 0) const SizedBox(height: 12),
+                  _buildActivityItem(
+                    icon: _getActivityIcon(activity.type),
+                    iconColor: _getActivityColor(activity.type),
+                    title: activity.title,
+                    description: activity.description,
+                    timeAgo: activity.timeAgo,
+                  ),
+                ],
+              );
+            }).toList(),
+        ],
+      ),
+    );
+  }
+
+  IconData _getActivityIcon(String type) {
+    switch (type) {
+      case 'task_completed':
+        return Icons.check_circle;
+      case 'project_joined':
+        return Icons.group_add;
+      case 'photo_uploaded':
+        return Icons.photo_camera;
+      case 'achievement_unlocked':
+        return Icons.emoji_events; // Трофей для достижений
+      default:
+        return Icons.info;
+    }
+  }
+
+  Color _getActivityColor(String type) {
+    switch (type) {
+      case 'task_completed':
+        return const Color(0xFF4CAF50);
+      case 'project_joined':
+        return const Color(0xFF2196F3);
+      case 'photo_uploaded':
+        return const Color(0xFFFF9800);
+      case 'achievement_unlocked':
+        return const Color(0xFFFFC107); // Золотой для достижений
+      default:
+        return Colors.grey;
+    }
+  }
+
+  Widget _buildActivityItem({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String description,
+    required String timeAgo,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            icon,
+            color: iconColor,
+            size: 24,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '$description • $timeAgo',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

@@ -5,6 +5,9 @@ import '../l10n/app_localizations.dart';
 import '../providers/locale_provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/language_selector.dart';
+import '../widgets/birqadam_logo.dart';
+import '../widgets/animated_button.dart';
+import '../theme/app_colors.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -24,6 +27,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
   final _confirmPasswordController = TextEditingController();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _organizationController = TextEditingController();
 
   late AnimationController _fadeController;
   late AnimationController _slideController;
@@ -69,6 +73,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     _confirmPasswordController.dispose();
     _nameController.dispose();
     _phoneController.dispose();
+    _organizationController.dispose();
     super.dispose();
   }
 
@@ -105,21 +110,24 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
           _nameController.text.trim(),
           _phoneController.text.trim(),
           _selectedRole,
+          organizationName: _selectedRole == 'organizer' ? _organizationController.text.trim() : null,
         );
       }
 
       if (!mounted) return;
 
       if (authProvider.isAuthenticated) {
-        // Navigate based on role
-        final role = authProvider.user?.role ?? 'volunteer';
-
-        if (role == 'organizer' && !authProvider.user!.isApproved) {
-          // Show pending approval screen
+        final user = authProvider.user;
+        
+        // Навигация на основе роли и статуса
+        if (user?.role == 'organizer' && !(user?.isApproved ?? false)) {
+          // Организатор не одобрен - на экран ожидания
           Navigator.of(context).pushReplacementNamed('/pending-approval');
-        } else if (role == 'organizer') {
+        } else if (user?.role == 'organizer') {
+          // Организатор одобрен
           Navigator.of(context).pushReplacementNamed('/organizer');
         } else {
+          // Волонтёр
           Navigator.of(context).pushReplacementNamed('/volunteer');
         }
       }
@@ -154,15 +162,17 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              const Color(0xFF4CAF50),
-              const Color(0xFF2E7D32),
-              const Color(0xFF1B5E20),
+              Color(0xFF1976D2), // Синий
+              Color(0xFF42A5F5), // Светло-синий
+              Color(0xFF4CAF50), // Зеленый
+              Color(0xFFFF9800), // Оранжевый
             ],
+            stops: [0.0, 0.35, 0.65, 1.0],
           ),
         ),
         child: SafeArea(
@@ -186,26 +196,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                     opacity: _fadeAnimation,
                     child: Column(
                       children: [
-                        Container(
-                          width: 100,
-                          height: 100,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(30),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.2),
-                                blurRadius: 20,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.eco,
-                            size: 60,
-                            color: Color(0xFF4CAF50),
-                          ),
-                        ),
+                        const BirQadamLogo(size: 100),
                         const SizedBox(height: 20),
                         AnimatedTextKit(
                           animatedTexts: [
@@ -234,15 +225,16 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                       opacity: _fadeAnimation,
                       child: Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.all(24),
+                        padding: const EdgeInsets.all(28),
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(30),
+                          borderRadius: BorderRadius.circular(32),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 30,
-                              offset: const Offset(0, 15),
+                              color: Colors.black.withOpacity(0.15),
+                              blurRadius: 40,
+                              offset: const Offset(0, 20),
+                              spreadRadius: 2,
                             ),
                           ],
                         ),
@@ -257,20 +249,22 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                                     ? localizations.t('welcome_back')
                                     : localizations.t('join_us'),
                                 style: const TextStyle(
-                                  fontSize: 24,
+                                  fontSize: 28,
                                   fontWeight: FontWeight.bold,
-                                  color: Color(0xFF2E7D32),
+                                  color: Color(0xFF2D3436),
+                                  letterSpacing: 0.5,
                                 ),
                                 textAlign: TextAlign.center,
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 10),
                               Text(
                                 _isLogin
                                     ? localizations.t('sign_in')
                                     : localizations.t('sign_up'),
                                 style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.grey[600],
+                                  fontSize: 15,
+                                  color: Colors.grey[500],
+                                  fontWeight: FontWeight.w500,
                                 ),
                                 textAlign: TextAlign.center,
                               ),
@@ -301,6 +295,23 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                                   hint: localizations.t('enter_phone'),
                                   icon: Icons.phone,
                                   keyboardType: TextInputType.phone,
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return localizations.t('field_required');
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+                              ],
+
+                              // Organization name (only for organizers during registration)
+                              if (!_isLogin && _selectedRole == 'organizer') ...[
+                                _buildTextField(
+                                  controller: _organizationController,
+                                  label: 'Название организации',
+                                  hint: 'Введите название вашей организации',
+                                  icon: Icons.business,
                                   validator: (value) {
                                     if (value == null || value.isEmpty) {
                                       return localizations.t('field_required');
@@ -373,9 +384,9 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                                 Text(
                                   localizations.t('select_role'),
                                   style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF2E7D32),
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF2D3436),
                                   ),
                                 ),
                                 const SizedBox(height: 12),
@@ -405,39 +416,43 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                               const SizedBox(height: 30),
 
                               // Submit button
-                              _isLoading
-                                  ? const Center(
-                                      child: CircularProgressIndicator(
-                                        color: Color(0xFF4CAF50),
-                                      ),
-                                    )
-                                  : ElevatedButton(
-                                      onPressed: _submit,
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF4CAF50),
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(vertical: 16),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                        elevation: 5,
-                                      ),
-                                      child: Text(
-                                        _isLogin
-                                            ? localizations.t('sign_in')
-                                            : localizations.t('sign_up'),
-                                        style: const TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
+                              Container(
+                                height: 58,
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFF1976D2), Color(0xFF42A5F5)],
+                                    begin: Alignment.centerLeft,
+                                    end: Alignment.centerRight,
+                                  ),
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF1976D2).withOpacity(0.4),
+                                      blurRadius: 15,
+                                      offset: const Offset(0, 8),
                                     ),
+                                  ],
+                                ),
+                                child: AnimatedButton(
+                                  text: _isLogin
+                                      ? localizations.t('sign_in')
+                                      : localizations.t('sign_up'),
+                                  icon: _isLogin ? Icons.login_rounded : Icons.person_add_rounded,
+                                  onPressed: _submit,
+                                  isLoading: _isLoading,
+                                  isFullWidth: true,
+                                  backgroundColor: Colors.transparent,
+                                ),
+                              ),
 
                               const SizedBox(height: 20),
 
                               // Toggle mode button
                               TextButton(
                                 onPressed: _toggleMode,
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                ),
                                 child: RichText(
                                   text: TextSpan(
                                     text: _isLogin
@@ -445,7 +460,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                                         : localizations.t('already_have_account') + ' ',
                                     style: TextStyle(
                                       color: Colors.grey[600],
-                                      fontSize: 14,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                     children: [
                                       TextSpan(
@@ -453,8 +469,9 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
                                             ? localizations.t('sign_up')
                                             : localizations.t('sign_in'),
                                         style: const TextStyle(
-                                          color: Color(0xFF4CAF50),
+                                          color: Color(0xFF1976D2),
                                           fontWeight: FontWeight.bold,
+                                          decoration: TextDecoration.underline,
                                         ),
                                       ),
                                     ],
@@ -492,30 +509,40 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       obscureText: isPassword,
       keyboardType: keyboardType,
       validator: validator,
-      style: const TextStyle(fontSize: 16),
+      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        prefixIcon: Icon(icon, color: const Color(0xFF4CAF50)),
+        prefixIcon: Container(
+          margin: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF1976D2), Color(0xFF42A5F5)],
+            ),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: Colors.white, size: 20),
+        ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(color: Colors.grey[300]!),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(color: Colors.grey[300]!),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF4CAF50), width: 2),
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFF1976D2), width: 2),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(color: Colors.red),
         ),
         filled: true,
-        fillColor: Colors.grey[50],
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        fillColor: const Color(0xFFF8F9FA),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       ),
     );
   }
@@ -531,29 +558,53 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
-        padding: const EdgeInsets.all(16),
+        curve: Curves.easeInOut,
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.1) : Colors.grey[100],
+          gradient: isSelected
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [color, color.withOpacity(0.8)],
+                )
+              : null,
+          color: isSelected ? null : const Color(0xFFF8F9FA),
           border: Border.all(
-            color: isSelected ? color : Colors.grey[300]!,
-            width: isSelected ? 2 : 1,
+            color: isSelected ? Colors.white.withOpacity(0.5) : Colors.grey[300]!,
+            width: isSelected ? 2 : 1.5,
           ),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: color.withOpacity(0.4),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : [],
         ),
         child: Column(
           children: [
-            Icon(
-              icon,
-              color: isSelected ? color : Colors.grey[600],
-              size: 32,
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isSelected ? Colors.white.withOpacity(0.25) : color.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                color: isSelected ? Colors.white : color,
+                size: 36,
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Text(
               label,
               style: TextStyle(
-                fontSize: 14,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? color : Colors.grey[700],
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: isSelected ? Colors.white : Colors.grey[700],
               ),
               textAlign: TextAlign.center,
             ),

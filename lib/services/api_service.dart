@@ -1,14 +1,10 @@
-import 'dart:io' show Platform;
+import '../config/app_config.dart';
 
 class ApiService {
   // Функция для определения базового URL
   static String getBaseUrl() {
-    if (Platform.isAndroid) {
-      return 'http://10.0.2.2:8000'; // Специальный IP для доступа к localhost из Android эмулятора
-    } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      return 'http://localhost:8000'; // Для desktop платформ используем localhost
-    }
-    return 'http://192.168.0.129:8000'; // Для iOS и других платформ
+    // Используем конфигурацию из app_config.dart
+    return AppConfig.apiBaseUrl;
   }
 
   // API endpoints
@@ -33,6 +29,27 @@ class ApiService {
   // Task endpoints
   static String get tasksUrl => '$apiBase/tasks/';
 
+  static String acceptTaskUrl(int taskId) => '$apiBase/tasks/$taskId/accept/';
+  static String declineTaskUrl(int taskId) => '$apiBase/tasks/$taskId/decline/';
+
   // Device token endpoint
   static String get deviceTokenUrl => '$apiBase/device-token/';
+
+  // Achievements endpoints
+  static String get achievementsUrl => '$apiBase/achievements/';
+  static String get userProgressUrl => '$apiBase/achievements/progress/';
+
+  // Activity endpoints
+  static String get activitiesUrl => '$apiBase/activities/';
+
+  // Leaderboard endpoints
+  static String get leaderboardUrl => '$apiBase/leaderboard/';
+
+  // Photo reports endpoints
+  static String submitPhotoReportUrl(int taskId) => '$apiBase/tasks/$taskId/photo-reports/';
+  static String get organizerPhotoReportsUrl => '$apiBase/organizer/photo-reports/';
+  static String get volunteerPhotoReportsUrl => '$apiBase/photo-reports/';
+  static String photoReportDetailUrl(int photoId) => '$apiBase/photo-reports/$photoId/';
+  static String ratePhotoReportUrl(int photoId) => '$apiBase/photo-reports/$photoId/rate/';
+  static String rejectPhotoReportUrl(int photoId) => '$apiBase/photo-reports/$photoId/reject/';
 }

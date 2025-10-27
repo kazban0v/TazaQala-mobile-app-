@@ -15,12 +15,13 @@ class AppLocalizations {
   static const List<Locale> supportedLocales = [
     Locale('ru', 'RU'),
     Locale('kk', 'KZ'),
+    Locale('en', 'US'),
   ];
 
   static final Map<String, Map<String, String>> _localizedValues = {
     'ru': {
       // Common
-      'app_title': 'TazaQala',
+      'app_title': 'BirQadam',
       'save': 'Сохранить',
       'cancel': 'Отмена',
       'confirm': 'Подтвердить',
@@ -35,6 +36,11 @@ class AppLocalizations {
       'select_language': 'Выберите язык',
       'russian': 'Русский',
       'kazakh': 'Қазақша',
+      'english': 'English',
+      'you': 'Вы',
+      'volunteers': 'Волонтеры',
+      'cities': 'Города',
+      'achievements': 'Достижения',
 
       // Auth
       'login': 'Вход',
@@ -129,16 +135,116 @@ class AppLocalizations {
       'remove_participant': 'Удалить участника',
       'no_participants': 'Нет участников',
 
+      // ✅ ИСПРАВЛЕНИЕ НП-6: Дополнительные переводы
+      // Theme
+      'theme': 'Тема',
+      'light_theme': 'Светлая тема',
+      'dark_theme': 'Темная тема',
+      'system_theme': 'Системная',
+      
+      // Statistics
+      'statistics': 'Статистика',
+      'total_projects': 'Всего проектов',
+      'active_projects': 'Активные проекты',
+      'total_volunteers': 'Всего волонтёров',
+      'hours_volunteered': 'Часов волонтёрства',
+      
+      // Photo Reports
+      'photo_reports': 'Фотоотчёты',
+      'upload_photo': 'Загрузить фото',
+      'take_photo': 'Сделать фото',
+      'select_from_gallery': 'Выбрать из галереи',
+      'photo_uploaded': 'Фото загружено',
+      'photo_approved': 'Фото одобрено',
+      'photo_rejected': 'Фото отклонено',
+      
+      // Actions
+      'accept': 'Принять',
+      'decline': 'Отклонить',
+      'approve': 'Одобрить',
+      'reject': 'Отклонить',
+      'submit': 'Отправить',
+      'close': 'Закрыть',
+      'refresh': 'Обновить',
+      'share': 'Поделиться',
+      'download': 'Скачать',
+      
+      // Time
+      'today': 'Сегодня',
+      'yesterday': 'Вчера',
+      'tomorrow': 'Завтра',
+      'this_week': 'На этой неделе',
+      'this_month': 'В этом месяце',
+      'last_week': 'На прошлой неделе',
+      'last_month': 'В прошлом месяце',
+      
+      // Search & Filter
+      'search': 'Поиск',
+      'filter': 'Фильтр',
+      'sort_by': 'Сортировка',
+      'all': 'Все',
+      'completed': 'Завершённые',
+      'in_progress': 'В процессе',
+      'upcoming': 'Предстоящие',
+
       // Errors
       'error_occurred': 'Произошла ошибка',
       'network_error': 'Ошибка сети',
       'server_error': 'Ошибка сервера',
       'try_again': 'Попробуйте снова',
       'invalid_credentials': 'Неверный email или пароль',
+
+      // Onboarding
+      'onboarding_skip': 'Пропустить',
+      'onboarding_get_started': 'Начать',
+      'onboarding_welcome_title': 'Добро пожаловать в BirQadam',
+      'onboarding_welcome_subtitle': 'Один шаг к лучшему миру',
+      'onboarding_welcome_desc': 'Присоединяйтесь к сообществу волонтёров и организаторов социальных проектов',
+
+      'onboarding_account_title': 'Проверяем аккаунт',
+      'onboarding_account_subtitle': 'У вас ещё нет учётной записи в BirQadam?',
+      'onboarding_account_desc': 'Перенаправляем вас на\nстраницу авторизации\nи регистрации',
+
+      'onboarding_registration_title': 'Регистрация завершена',
+      'onboarding_registration_subtitle': 'Ваша заявка одобрена!',
+      'onboarding_registration_desc': 'Теперь давайте настроим уведомления',
+      'onboarding_enable_notifications': 'Включить уведомления',
+      'onboarding_notifications_enabled': 'Уведомления включены!',
+      'onboarding_notifications_title': 'Будьте в курсе',
+      'onboarding_notifications_desc': 'Получайте информацию о новых проектах и задачах',
+
+      // Notification examples
+      'onboarding_notif_registration': 'Регистрация завершена',
+      'onboarding_notif_registration_desc': 'Добро пожаловать в BirQadam!',
+      'onboarding_notif_checkin': 'Напоминание о регистрации',
+      'onboarding_notif_checkin_desc': 'Не забудьте отметиться на смене',
+      'onboarding_notif_role': 'Новая роль предложена',
+      'onboarding_notif_role_desc': 'Вам предложена роль координатора',
+
+      'onboarding_location_title': 'Разрешить доступ к геолокации',
+      'onboarding_location_subtitle': 'Поделитесь своим местоположением для лучшего опыта',
+      'onboarding_location_desc': 'Это поможет вам:',
+      'onboarding_location_benefit1': 'Проекты рядом с вами',
+      'onboarding_location_benefit2': 'Навигация до места',
+      'onboarding_location_benefit3': 'Уведомления о событиях',
+      'onboarding_enable_location': 'Разрешить доступ',
+      'onboarding_skip_location': 'Пропустить',
+      'onboarding_location_enabled': 'Доступ к геолокации разрешён!',
+
+      'onboarding_final_title': 'Добро пожаловать в сообщество BirQadam',
+      'onboarding_final_subtitle': 'Вы готовы начать!',
+      'onboarding_final_desc': 'Здесь вы можете:',
+      'onboarding_final_benefit1': 'Открыть для себя новые\nвозможности волонтёрства',
+      'onboarding_final_benefit2': 'Поддержать дела, которые\nвам важны',
+      'onboarding_final_benefit3': 'Стать частью глобального\nсообщества',
+      'onboarding_lets_start': 'Давайте начнём!',
+
+      'onboarding_community_title': 'Присоединяйтесь к нашему сообществу',
+      'onboarding_community_desc': 'Станьте частью команды волонтеров по всему Казахстану',
     },
     'kk': {
       // Common
-      'app_title': 'TazaQala',
+      'app_title': 'BirQadam',
       'save': 'Сақтау',
       'cancel': 'Болдырмау',
       'confirm': 'Растау',
@@ -153,6 +259,11 @@ class AppLocalizations {
       'select_language': 'Тілді таңдаңыз',
       'russian': 'Русский',
       'kazakh': 'Қазақша',
+      'english': 'English',
+      'you': 'Сіз',
+      'volunteers': 'Волонтерлер',
+      'cities': 'Қалалар',
+      'achievements': 'Жетістіктер',
 
       // Auth
       'login': 'Кіру',
@@ -247,12 +358,335 @@ class AppLocalizations {
       'remove_participant': 'Қатысушыны жою',
       'no_participants': 'Қатысушылар жоқ',
 
+      // ✅ ИСПРАВЛЕНИЕ НП-6: Дополнительные переводы
+      // Theme
+      'theme': 'Тақырып',
+      'light_theme': 'Жарық тақырып',
+      'dark_theme': 'Қараңғы тақырып',
+      'system_theme': 'Жүйе бойынша',
+      
+      // Statistics
+      'statistics': 'Статистика',
+      'total_projects': 'Барлығы жобалар',
+      'active_projects': 'Белсенді жобалар',
+      'total_volunteers': 'Барлығы волонтерлер',
+      'hours_volunteered': 'Волонтерлік сағаттар',
+      
+      // Photo Reports
+      'photo_reports': 'Фото есептер',
+      'upload_photo': 'Фото жүктеу',
+      'take_photo': 'Фото түсіру',
+      'select_from_gallery': 'Галереядан таңдау',
+      'photo_uploaded': 'Фото жүктелді',
+      'photo_approved': 'Фото мақұлданды',
+      'photo_rejected': 'Фото қабылданбады',
+      
+      // Actions
+      'accept': 'Қабылдау',
+      'decline': 'Бас тарту',
+      'approve': 'Мақұлдау',
+      'reject': 'Қабылдамау',
+      'submit': 'Жіберу',
+      'close': 'Жабу',
+      'refresh': 'Жаңарту',
+      'share': 'Бөлісу',
+      'download': 'Жүктеп алу',
+      
+      // Time
+      'today': 'Бүгін',
+      'yesterday': 'Кеше',
+      'tomorrow': 'Ертең',
+      'this_week': 'Осы апта',
+      'this_month': 'Осы ай',
+      'last_week': 'Өткен апта',
+      'last_month': 'Өткен ай',
+      
+      // Search & Filter
+      'search': 'Іздеу',
+      'filter': 'Сүзгі',
+      'sort_by': 'Сұрыптау',
+      'all': 'Барлығы',
+      'completed': 'Аяқталды',
+      'in_progress': 'Орындалуда',
+      'upcoming': 'Алдағы',
+
       // Errors
       'error_occurred': 'Қате пайда болды',
       'network_error': 'Желі қатесі',
       'server_error': 'Сервер қатесі',
       'try_again': 'Қайталап көріңіз',
       'invalid_credentials': 'Email немесе құпия сөз дұрыс емес',
+
+      // Onboarding
+      'onboarding_skip': 'Өткізу',
+      'onboarding_get_started': 'Бастау',
+      'onboarding_welcome_title': 'BirQadam-ға қош келдіңіз',
+      'onboarding_welcome_subtitle': 'Жақсы әлемге бір қадам',
+      'onboarding_welcome_desc': 'Волонтерлер мен әлеуметтік жобалар ұйымдастырушыларының қауымдастығына қосылыңыз',
+
+      'onboarding_account_title': 'Аккаунтты тексеріп жатырмыз',
+      'onboarding_account_subtitle': 'BirQadam-да әлі есептік жазбаңыз жоқ па?',
+      'onboarding_account_desc': 'Сізді авторизация және\nтіркеу бетіне\nбағыттаймыз',
+
+      'onboarding_registration_title': 'Тіркеу аяқталды',
+      'onboarding_registration_subtitle': 'Сіздің өтінішіңіз мақұлданды!',
+      'onboarding_registration_desc': 'Енді хабарландыруларды баптайық',
+      'onboarding_enable_notifications': 'Хабарландыруларды қосу',
+      'onboarding_notifications_enabled': 'Хабарландырулар қосылды!',
+      'onboarding_notifications_title': 'Хабардар болыңыз',
+      'onboarding_notifications_desc': 'Жаңа жобалар мен тапсырмалар туралы ақпарат алыңыз',
+
+      // Notification examples
+      'onboarding_notif_registration': 'Тіркеу аяқталды',
+      'onboarding_notif_registration_desc': 'BirQadam-ға қош келдіңіз!',
+      'onboarding_notif_checkin': 'Тіркелу туралы еске салу',
+      'onboarding_notif_checkin_desc': 'Жұмыс кезінде белгілеуді ұмытпаңыз',
+      'onboarding_notif_role': 'Жаңа рөл ұсынылды',
+      'onboarding_notif_role_desc': 'Сізге үйлестіруші рөлі ұсынылды',
+
+      'onboarding_location_title': 'Геолокацияға рұқсат беру',
+      'onboarding_location_subtitle': 'Жақсырақ тәжірибе үшін орналасқан жеріңізбен бөлісіңіз',
+      'onboarding_location_desc': 'Бұл сізге көмектеседі:',
+      'onboarding_location_benefit1': 'Жаныңыздағы жобалар',
+      'onboarding_location_benefit2': 'Орынға навигация',
+      'onboarding_location_benefit3': 'Оқиғалар туралы хабарландырулар',
+      'onboarding_enable_location': 'Рұқсат беру',
+      'onboarding_skip_location': 'Өткізу',
+      'onboarding_location_enabled': 'Геолокацияға рұқсат берілді!',
+
+      'onboarding_final_title': 'BirQadam қауымдастығына қош келдіңіз',
+      'onboarding_final_subtitle': 'Сіз бастауға дайынсыз!',
+      'onboarding_final_desc': 'Мұнда сіз:',
+      'onboarding_final_benefit1': 'Волонтерліктің жаңа\nмүмкіндіктерін ашасыз',
+      'onboarding_final_benefit2': 'Сізге маңызды істерді\nқолдайсыз',
+      'onboarding_final_benefit3': 'Жаһандық қауымдастықтың\nбөлігі боласыз',
+      'onboarding_lets_start': 'Бастайық!',
+
+      'onboarding_community_title': 'Біздің қауымдастыққа қосылыңыз',
+      'onboarding_community_desc': 'Қазақстан бойынша волонтерлер тобының бөлігі болыңыз',
+    },
+    'en': {
+      // Common
+      'app_title': 'BirQadam',
+      'save': 'Save',
+      'cancel': 'Cancel',
+      'confirm': 'Confirm',
+      'delete': 'Delete',
+      'edit': 'Edit',
+      'loading': 'Loading...',
+      'error': 'Error',
+      'success': 'Success',
+      'ok': 'OK',
+      'back': 'Back',
+      'next': 'Next',
+      'select_language': 'Select language',
+      'russian': 'Русский',
+      'kazakh': 'Қазақша',
+      'english': 'English',
+      'you': 'You',
+      'volunteers': 'Volunteers',
+      'cities': 'Cities',
+      'achievements': 'Achievements',
+
+      // Auth
+      'login': 'Login',
+      'register': 'Register',
+      'email': 'Email',
+      'password': 'Password',
+      'name': 'Name',
+      'phone': 'Phone',
+      'confirm_password': 'Confirm password',
+      'forgot_password': 'Forgot password?',
+      'dont_have_account': 'Don\'t have an account?',
+      'already_have_account': 'Already have an account?',
+      'sign_in': 'Sign in',
+      'sign_up': 'Sign up',
+      'logout': 'Logout',
+      'select_role': 'Select role',
+      'volunteer': 'Volunteer',
+      'organizer': 'Organizer',
+      'welcome_back': 'Welcome back!',
+      'join_us': 'Join us',
+      'enter_email': 'Enter email',
+      'enter_password': 'Enter password',
+      'enter_name': 'Enter name',
+      'enter_phone': 'Enter phone number',
+      'password_min_length': 'Password must be at least 6 characters',
+      'passwords_dont_match': 'Passwords don\'t match',
+      'invalid_email': 'Invalid email format',
+      'field_required': 'This field is required',
+
+      // Organizer approval
+      'awaiting_approval': 'Awaiting approval',
+      'approval_pending': 'Your application is under review',
+      'approval_pending_desc': 'The administrator will review your application and notify you of the result. This usually takes 1-2 business days.',
+      'check_back_later': 'Check back later',
+      'contact_admin': 'Contact administrator',
+      'approval_rejected': 'Application rejected',
+      'approval_rejected_desc': 'Unfortunately, your application was rejected. Contact the administrator for more information.',
+
+      // Projects
+      'projects': 'Projects',
+      'my_projects': 'My projects',
+      'all_projects': 'All projects',
+      'create_project': 'Create project',
+      'project_title': 'Project title',
+      'project_description': 'Project description',
+      'project_city': 'City',
+      'project_date': 'Project date',
+      'start_date': 'Start date',
+      'end_date': 'End date',
+      'volunteers_needed': 'Volunteers needed',
+      'volunteers_joined': 'Volunteers joined',
+      'join_project': 'Join',
+      'leave_project': 'Leave project',
+      'project_details': 'Project details',
+      'no_projects': 'No projects',
+      'no_projects_desc': 'Create your first project or join existing ones',
+
+      // Volunteer types
+      'volunteer_type': 'Volunteer type',
+      'social': 'Social assistance',
+      'environmental': 'Environmental projects',
+      'cultural': 'Cultural events',
+
+      // Tasks
+      'tasks': 'Tasks',
+      'my_tasks': 'My tasks',
+      'create_task': 'Create task',
+      'task_title': 'Task title',
+      'task_description': 'Task description',
+      'task_deadline': 'Deadline',
+      'task_status': 'Status',
+      'task_completed': 'Completed',
+      'task_pending': 'Pending',
+      'task_in_progress': 'In progress',
+      'no_tasks': 'No tasks',
+      'assign_task': 'Assign task',
+
+      // Profile
+      'profile': 'Profile',
+      'edit_profile': 'Edit profile',
+      'change_password': 'Change password',
+      'settings': 'Settings',
+      'notifications': 'Notifications',
+      'language': 'Language',
+      'rating': 'Rating',
+      'projects_completed': 'Projects completed',
+      'tasks_completed': 'Tasks completed',
+
+      // Participants
+      'participants': 'Participants',
+      'add_participant': 'Add participant',
+      'remove_participant': 'Remove participant',
+      'no_participants': 'No participants',
+
+      // ✅ ИСПРАВЛЕНИЕ НП-6: Additional translations
+      // Theme
+      'theme': 'Theme',
+      'light_theme': 'Light theme',
+      'dark_theme': 'Dark theme',
+      'system_theme': 'System default',
+      
+      // Statistics
+      'statistics': 'Statistics',
+      'total_projects': 'Total projects',
+      'active_projects': 'Active projects',
+      'total_volunteers': 'Total volunteers',
+      'hours_volunteered': 'Hours volunteered',
+      
+      // Photo Reports
+      'photo_reports': 'Photo reports',
+      'upload_photo': 'Upload photo',
+      'take_photo': 'Take photo',
+      'select_from_gallery': 'Select from gallery',
+      'photo_uploaded': 'Photo uploaded',
+      'photo_approved': 'Photo approved',
+      'photo_rejected': 'Photo rejected',
+      
+      // Actions
+      'accept': 'Accept',
+      'decline': 'Decline',
+      'approve': 'Approve',
+      'reject': 'Reject',
+      'submit': 'Submit',
+      'close': 'Close',
+      'refresh': 'Refresh',
+      'share': 'Share',
+      'download': 'Download',
+      
+      // Time
+      'today': 'Today',
+      'yesterday': 'Yesterday',
+      'tomorrow': 'Tomorrow',
+      'this_week': 'This week',
+      'this_month': 'This month',
+      'last_week': 'Last week',
+      'last_month': 'Last month',
+      
+      // Search & Filter
+      'search': 'Search',
+      'filter': 'Filter',
+      'sort_by': 'Sort by',
+      'all': 'All',
+      'completed': 'Completed',
+      'in_progress': 'In progress',
+      'upcoming': 'Upcoming',
+
+      // Errors
+      'error_occurred': 'An error occurred',
+      'network_error': 'Network error',
+      'server_error': 'Server error',
+      'try_again': 'Try again',
+      'invalid_credentials': 'Invalid email or password',
+
+      // Onboarding
+      'onboarding_skip': 'Skip',
+      'onboarding_get_started': 'Get started',
+      'onboarding_welcome_title': 'Welcome to BirQadam',
+      'onboarding_welcome_subtitle': 'One step towards a better world',
+      'onboarding_welcome_desc': 'Join the community of volunteers and social project organizers',
+
+      'onboarding_account_title': 'Checking account',
+      'onboarding_account_subtitle': 'Don\'t have a BirQadam account yet?',
+      'onboarding_account_desc': 'Redirecting you to the\nauthorization and\nregistration page',
+
+      'onboarding_registration_title': 'Registration complete',
+      'onboarding_registration_subtitle': 'Your application is approved!',
+      'onboarding_registration_desc': 'Now let\'s set up notifications',
+      'onboarding_enable_notifications': 'Enable notifications',
+      'onboarding_notifications_enabled': 'Notifications enabled!',
+      'onboarding_notifications_title': 'Stay in the loop',
+      'onboarding_notifications_desc': 'Get information about new projects and tasks',
+
+      // Notification examples
+      'onboarding_notif_registration': 'Registration completed',
+      'onboarding_notif_registration_desc': 'Welcome to BirQadam!',
+      'onboarding_notif_checkin': 'Check-in reminder',
+      'onboarding_notif_checkin_desc': 'Don\'t forget to check-in to your shift',
+      'onboarding_notif_role': 'Role offered',
+      'onboarding_notif_role_desc': 'You\'ve been offered a coordinator role',
+
+      'onboarding_location_title': 'Allow location access',
+      'onboarding_location_subtitle': 'Share your location for a better experience',
+      'onboarding_location_desc': 'This will help you:',
+      'onboarding_location_benefit1': 'Projects near you',
+      'onboarding_location_benefit2': 'Navigation to location',
+      'onboarding_location_benefit3': 'Event notifications',
+      'onboarding_enable_location': 'Allow access',
+      'onboarding_skip_location': 'Skip',
+      'onboarding_location_enabled': 'Location access granted!',
+
+      'onboarding_final_title': 'Welcome to the BirQadam community',
+      'onboarding_final_subtitle': 'You\'re ready to start!',
+      'onboarding_final_desc': 'Here you can:',
+      'onboarding_final_benefit1': 'Discover new volunteer\nopportunities',
+      'onboarding_final_benefit2': 'Support causes that\nmatter to you',
+      'onboarding_final_benefit3': 'Become part of a global\ncommunity',
+      'onboarding_lets_start': 'Let\'s start!',
+
+      'onboarding_community_title': 'Join our community',
+      'onboarding_community_desc': 'Be part of a volunteer team across Kazakhstan',
     },
   };
 
@@ -270,7 +704,7 @@ class _AppLocalizationsDelegate
 
   @override
   bool isSupported(Locale locale) {
-    return ['ru', 'kk'].contains(locale.languageCode);
+    return ['ru', 'kk', 'en'].contains(locale.languageCode);
   }
 
   @override

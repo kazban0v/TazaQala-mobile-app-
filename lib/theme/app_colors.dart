@@ -1,62 +1,137 @@
 import 'package:flutter/material.dart';
 
+/// BirQadam Color Palette
+/// Primary: Blue 🔵 | Accent: Orange 🟠 | Success: Green 🟢
 class AppColors {
-  // Основные цвета
-  static const Color primary = Color(0xFF2E7D32);      // Темно-зеленый
-  static const Color primaryLight = Color(0xFF4CAF50); // Светло-зеленый
-  static const Color primaryDark = Color(0xFF1B5E20);  // Темный зеленый
+  // ============================================
+  // ОСНОВНЫЕ ЦВЕТА БРЕНДА BirQadam
+  // ============================================
 
-  // Семантические цвета
-  static const Color success = Color(0xFF4CAF50);      // Зеленый для успеха
-  static const Color warning = Color(0xFFFF9800);      // Оранжевый для предупреждений
-  static const Color error = Color(0xFFF44336);        // Красный для ошибок
-  static const Color info = Color(0xFF2196F3);         // Синий для информации
+  /// Основной синий цвет (Primary Blue)
+  static const Color primary = Color(0xFF1976D2);        // Насыщенный синий
+  static const Color primaryLight = Color(0xFF42A5F5);   // Светло-синий
+  static const Color primaryDark = Color(0xFF0D47A1);    // Темно-синий
 
-  // Фоновые цвета
-  static const Color background = Color(0xFFFFFFFF);   // Белый фон
-  static const Color surface = Color(0xFFF8F9FA);      // Светло-серый для карточек
-  static const Color surfaceVariant = Color(0xFFF1F8E9); // Светло-зеленый для карточек
+  /// Акцентный оранжевый цвет (Accent Orange)
+  static const Color accent = Color(0xFFFF9800);         // Яркий оранжевый
+  static const Color accentLight = Color(0xFFFFB74D);    // Светло-оранжевый
+  static const Color accentDark = Color(0xFFF57C00);     // Темно-оранжевый
 
-  // Текстовые цвета
-  static const Color textPrimary = Color(0xFF2E7D32);  // Основной текст
-  static const Color textSecondary = Color(0xFF666666); // Вторичный текст
-  static const Color textHint = Color(0xFF9E9E9E);     // Подсказки
+  // ============================================
+  // СЕМАНТИЧЕСКИЕ ЦВЕТА
+  // ============================================
 
-  // Границы и разделители
-  static const Color border = Color(0xFFE0E0E0);       // Основные границы
-  static const Color borderLight = Color(0xFFF0F0F0);  // Светлые границы
-  static const Color divider = Color(0xFFE0E0E0);      // Разделители
+  /// Зеленый для успеха (Success Green)
+  static const Color success = Color(0xFF4CAF50);        // Зеленый успех
+  static const Color successLight = Color(0xFF81C784);   // Светло-зеленый
+  static const Color successDark = Color(0xFF2E7D32);    // Темно-зеленый
 
-  // Статусы задач и проектов
-  static const Color statusOpen = Color(0xFF4CAF50);       // Открыто - зеленый
-  static const Color statusInProgress = Color(0xFFFF9800); // В работе - оранжевый
-  static const Color statusCompleted = Color(0xFF2196F3);  // Выполнено - синий
-  static const Color statusFailed = Color(0xFFF44336);     // Отклонено - красный
-  static const Color statusClosed = Color(0xFF9E9E9E);     // Закрыто - серый
+  /// Предупреждения (используем акцентный оранжевый)
+  static const Color warning = accent;                   // Оранжевый
 
-  // Акценты и дополнительные цвета
-  static const Color accent = Color(0xFFFFC107);       // Желтый акцент
-  static const Color highlight = Color(0xFFE8F5E8);     // Светло-зеленый highlight
+  /// Ошибки
+  static const Color error = Color(0xFFF44336);          // Красный для ошибок
+  static const Color errorLight = Color(0xFFE57373);     // Светло-красный
 
-  // Тени
-  static Color shadowLight = Colors.black.withOpacity(0.1);
-  static Color shadowMedium = Colors.black.withOpacity(0.2);
-  static Color shadowHeavy = Colors.black.withOpacity(0.3);
+  /// Информация (используем primary синий)
+  static const Color info = primary;                     // Синий для информации
 
-  // Градиенты
+  // ============================================
+  // ФОНОВЫЕ ЦВЕТА
+  // ============================================
+
+  static const Color background = Color(0xFFFAFAFA);     // Светло-серый фон
+  static const Color surface = Color(0xFFFFFFFF);        // Белый для карточек
+  static const Color surfaceVariant = Color(0xFFF5F5F5); // Светло-серый вариант
+
+  // ============================================
+  // ТЕКСТОВЫЕ ЦВЕТА
+  // ============================================
+
+  static const Color textPrimary = Color(0xFF212121);    // Основной текст (темный)
+  static const Color textSecondary = Color(0xFF757575);  // Вторичный текст (серый)
+  static const Color textHint = Color(0xFFBDBDBD);       // Подсказки (светло-серый)
+  static const Color textOnPrimary = Colors.white;       // Текст на синем фоне
+  static const Color textOnAccent = Colors.white;        // Текст на оранжевом фоне
+
+  // ============================================
+  // ГРАНИЦЫ И РАЗДЕЛИТЕЛИ
+  // ============================================
+
+  static const Color border = Color(0xFFE0E0E0);         // Основные границы
+  static const Color borderLight = Color(0xFFF0F0F0);    // Светлые границы
+  static const Color divider = Color(0xFFE0E0E0);        // Разделители
+
+  // ============================================
+  // СТАТУСЫ ЗАДАЧ И ПРОЕКТОВ
+  // ============================================
+
+  static const Color statusOpen = success;               // Открыто - зеленый ✅
+  static const Color statusInProgress = accent;          // В работе - оранжевый 🔶
+  static const Color statusCompleted = primary;          // Выполнено - синий ✔️
+  static const Color statusFailed = error;               // Отклонено - красный ❌
+  static const Color statusClosed = Color(0xFF9E9E9E);   // Закрыто - серый ⚪
+
+  // ============================================
+  // HIGHLIGHTS И АКЦЕНТЫ
+  // ============================================
+
+  static const Color highlight = Color(0xFFE3F2FD);      // Светло-синий highlight
+  static const Color highlightOrange = Color(0xFFFFE0B2); // Светло-оранжевый highlight
+  static const Color highlightGreen = Color(0xFFC8E6C9);  // Светло-зеленый highlight
+
+  // ============================================
+  // ТЕНИ
+  // ============================================
+
+  static Color shadowLight = Colors.black.withValues(alpha: 0.08);
+  static Color shadowMedium = Colors.black.withValues(alpha: 0.16);
+  static Color shadowHeavy = Colors.black.withValues(alpha: 0.24);
+
+  // ============================================
+  // ГРАДИЕНТЫ
+  // ============================================
+
+  /// Основной градиент (Синий)
   static const LinearGradient primaryGradient = LinearGradient(
     colors: [primary, primaryLight],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
 
+  /// Акцентный градиент (Оранжевый)
+  static const LinearGradient accentGradient = LinearGradient(
+    colors: [accent, accentLight],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  /// Градиент успеха (Зеленый)
+  static const LinearGradient successGradient = LinearGradient(
+    colors: [success, successLight],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  /// Фоновый градиент для экранов
   static const LinearGradient backgroundGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [
+      Color(0xFFE3F2FD),  // Светло-синий
+      Color(0xFFFAFAFA),  // Светло-серый
+      Color(0xFFFFFFFF),  // Белый
+    ],
+  );
+
+  /// Градиент для onboarding экранов
+  static const LinearGradient onboardingGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFFE8F5E8),
-      Color(0xFFF1F8E9),
-      Color(0xFFFFFFFF),
+      Color(0xFF1976D2),  // Синий
+      Color(0xFF42A5F5),  // Светло-синий
+      Color(0xFFFF9800),  // Оранжевый
     ],
   );
 }

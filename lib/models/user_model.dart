@@ -6,7 +6,9 @@ class UserModel {
   final String role;
   final bool isOrganizer;
   final bool isApproved;
+  final bool isRejected; // Добавлено поле для отклонения
   final int rating;
+  final String? registrationSource;
 
   UserModel({
     required this.id,
@@ -16,7 +18,9 @@ class UserModel {
     required this.role,
     required this.isOrganizer,
     required this.isApproved,
+    required this.isRejected,
     required this.rating,
+    this.registrationSource,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -28,7 +32,9 @@ class UserModel {
       role: json['role'] ?? 'volunteer',
       isOrganizer: json['is_organizer'] ?? false,
       isApproved: json['is_approved'] ?? (json['role'] == 'volunteer' ? true : false),
+      isRejected: json['is_rejected'] ?? false,
       rating: json['rating'] ?? 0,
+      registrationSource: json['registration_source'],
     );
   }
 
@@ -41,7 +47,9 @@ class UserModel {
       'role': role,
       'is_organizer': isOrganizer,
       'is_approved': isApproved,
+      'is_rejected': isRejected,
       'rating': rating,
+      'registration_source': registrationSource,
     };
   }
 
@@ -53,7 +61,9 @@ class UserModel {
     String? role,
     bool? isOrganizer,
     bool? isApproved,
+    bool? isRejected,
     int? rating,
+    String? registrationSource,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -63,7 +73,9 @@ class UserModel {
       role: role ?? this.role,
       isOrganizer: isOrganizer ?? this.isOrganizer,
       isApproved: isApproved ?? this.isApproved,
+      isRejected: isRejected ?? this.isRejected,
       rating: rating ?? this.rating,
+      registrationSource: registrationSource ?? this.registrationSource,
     );
   }
 }

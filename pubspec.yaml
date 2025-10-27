@@ -1,5 +1,5 @@
-name: cleanupv1
-description: A volunteer cleanup management app
+name: birqadam
+description: BirQadam - One step towards a better world. Volunteer management platform.
 
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
@@ -21,6 +21,9 @@ dependencies:
   # Shared preferences for token storage
   shared_preferences: ^2.2.2
 
+  # Secure storage
+  flutter_secure_storage: ^9.0.0
+
   # JSON serialization
   json_annotation: ^4.8.1
 
@@ -30,6 +33,8 @@ dependencies:
   # Firebase Cloud Messaging for push notifications
   firebase_core: ^3.0.0
   firebase_messaging: ^15.0.0
+  firebase_analytics: ^11.0.0  # ✅ ИСПРАВЛЕНИЕ СредП-16: Analytics
+  flutter_local_notifications: ^17.0.0
 
   # Icons
   cupertino_icons: ^1.0.2
@@ -42,6 +47,33 @@ dependencies:
   # Animations
   animated_text_kit: ^4.2.2
 
+  # Sharing functionality
+  share_plus: ^10.1.2
+
+  # Image picker for photo reports
+  image_picker: ^1.0.4
+
+  # ✅ ИСПРАВЛЕНИЕ НП-9: Lazy loading для изображений
+  cached_network_image: ^3.3.1
+
+  # Shimmer loading effect
+  shimmer: ^3.0.0
+
+  # Flutter Slidable for swipe actions
+  flutter_slidable: ^3.0.0
+
+  # Smooth page indicator for onboarding
+  smooth_page_indicator: ^1.1.0
+
+  # Permission handler
+  permission_handler: ^11.0.1
+
+  # Lottie animations for onboarding
+  lottie: ^3.0.0
+
+  # Charts for analytics
+  fl_chart: ^0.69.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -51,13 +83,24 @@ dev_dependencies:
   # Code generation
   json_serializable: ^6.7.1
   build_runner: ^2.4.7
+  
+  # Launcher icons generator
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
 
-  # Uncomment if you want to add assets
-  # assets:
-  #   - images/
+  # Assets
+  assets:
+    - assets/images/
+
+# Launcher Icons Configuration
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/logo_birqadam.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/logo_birqadam.png"
   
   # Uncomment if you want to add custom fonts
   # fonts:

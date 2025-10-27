@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:io' show Platform;
 import 'auth_provider.dart';
+import '../services/api_service.dart';
+import '../services/auth_http_client.dart';
 
 // Модель задания
 class Task {
@@ -74,6 +75,7 @@ class Task {
 
 class VolunteerTasksProvider with ChangeNotifier {
   final AuthProvider _authProvider;
+  late final AuthHttpClient _httpClient;
 
   List<Task> _tasks = [];
   bool _isLoading = false;
@@ -84,6 +86,8 @@ class VolunteerTasksProvider with ChangeNotifier {
   String? get errorMessage => _errorMessage;
 
   VolunteerTasksProvider(this._authProvider) {
+    // Создаём HTTP клиент с автоматическим token refresh
+    _httpClient = AuthHttpClient(_authProvider);
     // Слушаем изменения в аутентификации
     _authProvider.addListener(_onAuthChanged);
   }
@@ -104,15 +108,6 @@ class VolunteerTasksProvider with ChangeNotifier {
     super.dispose();
   }
 
-  String _getBaseUrl() {
-    if (Platform.isAndroid) {
-      return 'http://10.0.2.2:8000';
-    } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      return 'http://localhost:8000';
-    }
-    return 'http://192.168.0.129:8000';
-  }
-
   Future<void> loadTasks() async {
     if (!_authProvider.isAuthenticated) return;
 
@@ -121,12 +116,9 @@ class VolunteerTasksProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await http.get(
-        Uri.parse('${_getBaseUrl()}/custom-admin/api/tasks/'),
-        headers: {
-          'Authorization': 'Bearer ${_authProvider.token}',
-          'Content-Type': 'application/json',
-        },
+      // ✅ Используем AuthHttpClient с автоматическим token refresh
+      final response = await _httpClient.get(
+        Uri.parse(ApiService.tasksUrl),
       );
 
       if (response.statusCode == 200) {
@@ -158,4 +150,53 @@ class VolunteerTasksProvider with ChangeNotifier {
   int get completedTasksCount => _tasks.where((task) => task.status == 'completed').length;
   int get inProgressTasksCount => _tasks.where((task) => task.status == 'in_progress').length;
   int get openTasksCount => _tasks.where((task) => task.status == 'open').length;
+
+  // Метод для принятия задачи
+  Future<bool> acceptTask(int taskId) async {
+    if (!_authProvider.isAuthenticated) return false;
+
+    try {
+      // ✅ Используем AuthHttpClient с автоматическим token refresh
+      final response = await _httpClient.post(
+        Uri.parse(ApiService.acceptTaskUrl(taskId)),
+      );
+
+      if (response.statusCode == 200) {
+        // Обновляем состояние задачи локально
+        final index = _tasks.indexWhere((task) => task.id == taskId);
+        if (index != -1) {
+          _tasks[index] = _tasks[index].copyWith(isAssigned: true);
+          notifyListeners();
+        }
+        return true;
+      }
+    } catch (e) {
+      _errorMessage = 'Ошибка подключения: $e';
+      notifyListeners();
+    }
+    return false;
+  }
+
+  // Метод для отклонения задачи
+  Future<bool> declineTask(int taskId) async {
+    if (!_authProvider.isAuthenticated) return false;
+
+    try {
+      // ✅ Используем AuthHttpClient с автоматическим token refresh
+      final response = await _httpClient.post(
+        Uri.parse(ApiService.declineTaskUrl(taskId)),
+      );
+
+      if (response.statusCode == 200) {
+        // Удаляем задачу из списка, так как она отклонена
+        _tasks.removeWhere((task) => task.id == taskId);
+        notifyListeners();
+        return true;
+      }
+    } catch (e) {
+      _errorMessage = 'Ошибка подключения: $e';
+      notifyListeners();
+    }
+    return false;
+  }
 }

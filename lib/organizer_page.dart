@@ -3,11 +3,19 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:provider/provider.dart';
 import 'main.dart';
 import 'notification_service.dart';
 import 'widgets/volunteer_type_badge.dart';
+import 'widgets/skeleton_loader.dart';
+import 'widgets/empty_state.dart';
+import 'widgets/pull_to_refresh.dart';
+import 'widgets/statistics_card.dart';
+import 'widgets/filter_chip.dart';
 import 'screens/auth_screen.dart';
+import 'screens/photo_reports_tab.dart';
 import 'services/api_service.dart';
+import 'providers/auth_provider.dart';
 
 // Модель проекта для организатора
 class OrganizerProject {
@@ -89,7 +97,6 @@ class _OrganizerPageState extends State<OrganizerPage> {
    int _selectedIndex = 0;
    List<OrganizerProject> _projects = [];
    bool _isLoadingProjects = false;
-   String? _token;
 
    @override
    void initState() {
@@ -98,17 +105,22 @@ class _OrganizerPageState extends State<OrganizerPage> {
    }
 
   Future<void> _loadTokenAndData() async {
-    final prefs = await SharedPreferences.getInstance();
-    _token = prefs.getString('token');
-    if (_token != null) {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final token = authProvider.token;
+    if (token != null && token.isNotEmpty) {
       // Отправляем FCM токен на сервер при загрузке сохраненного токена
-      await NotificationService().setAuthToken(_token!);
+      print('🔐 Organizer page: Sending FCM token to server');
+      await NotificationService().setAuthToken(token);
       _loadProjects();
+    } else {
+      print('⚠️ Organizer page: No auth token available');
     }
   }
 
   Future<void> _loadProjects() async {
-    if (_token == null) return;
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final token = authProvider.token;
+    if (token == null || token.isEmpty) return;
 
     setState(() {
       _isLoadingProjects = true;
@@ -119,7 +131,7 @@ class _OrganizerPageState extends State<OrganizerPage> {
       final response = await http.get(
         Uri.parse(ApiService.organizerProjectsUrl),
         headers: {
-          'Authorization': 'Bearer $_token',
+          'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
         },
       );
@@ -144,13 +156,15 @@ class _OrganizerPageState extends State<OrganizerPage> {
   }
 
   Future<List<ProjectParticipant>> _loadProjectParticipants(int projectId) async {
-    if (_token == null) return [];
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final token = authProvider.token;
+    if (token == null || token.isEmpty) return [];
 
     try {
       final response = await http.get(
         Uri.parse(ApiService.projectParticipantsUrl(projectId)),
         headers: {
-          'Authorization': 'Bearer $_token',
+          'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
         },
       );
@@ -171,13 +185,15 @@ class _OrganizerPageState extends State<OrganizerPage> {
   }
 
   Future<bool> _updateProject(int projectId, Map<String, dynamic> projectData) async {
-    if (_token == null) return false;
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final token = authProvider.token;
+    if (token == null || token.isEmpty) return false;
 
     try {
       final response = await http.put(
         Uri.parse(ApiService.projectManageUrl(projectId)),
         headers: {
-          'Authorization': 'Bearer $_token',
+          'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
         },
         body: jsonEncode(projectData),
@@ -215,13 +231,15 @@ class _OrganizerPageState extends State<OrganizerPage> {
   }
 
   Future<bool> _deleteProject(int projectId) async {
-    if (_token == null) return false;
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final token = authProvider.token;
+    if (token == null || token.isEmpty) return false;
 
     try {
       final response = await http.delete(
         Uri.parse(ApiService.projectManageUrl(projectId)),
         headers: {
-          'Authorization': 'Bearer $_token',
+          'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
         },
       );
@@ -276,7 +294,7 @@ class _OrganizerPageState extends State<OrganizerPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'TazaQala',
+          'BirQadam',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: Color(0xFF2E7D32),
@@ -300,7 +318,8 @@ class _OrganizerPageState extends State<OrganizerPage> {
         children: [
           _buildProjectsTab(),
           _buildCreateProjectTab(),
-          _buildStatisticsTab(),
+          const PhotoReportsTab(),
+          _buildProfileTab(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -314,6 +333,7 @@ class _OrganizerPageState extends State<OrganizerPage> {
         selectedItemColor: const Color(0xFF4CAF50),
         unselectedItemColor: Colors.grey,
         selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600),
+        type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.business),
@@ -326,9 +346,14 @@ class _OrganizerPageState extends State<OrganizerPage> {
             label: 'Создать',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.analytics_outlined),
-            activeIcon: Icon(Icons.analytics, color: Color(0xFF4CAF50)),
-            label: 'Статистика',
+            icon: Icon(Icons.photo_library_outlined),
+            activeIcon: Icon(Icons.photo_library, color: Color(0xFF4CAF50)),
+            label: 'Фотоотчеты',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline_rounded),
+            activeIcon: Icon(Icons.person_rounded, color: Color(0xFF4CAF50)),
+            label: 'Профиль',
           ),
         ],
       ),
@@ -337,28 +362,33 @@ class _OrganizerPageState extends State<OrganizerPage> {
 
   Widget _buildProjectsTab() {
     if (_isLoadingProjects) {
-      return const Center(child: CircularProgressIndicator());
+      return const ListSkeleton(
+        itemSkeleton: ProjectCardSkeleton(),
+        itemCount: 3,
+      );
     }
 
     if (_projects.isEmpty) {
-      return RefreshIndicator(
+      return AppPullToRefresh(
         onRefresh: _loadProjects,
         child: ListView(
-          children: const [
-            SizedBox(height: 100),
-            Center(
-              child: Text(
-                'У вас пока нет проектов\n\nПотяните вниз для обновления',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey),
-              ),
+          children: [
+            const SizedBox(height: 100),
+            EmptyState(
+              icon: Icons.folder_open,
+              title: 'У вас пока нет проектов',
+              message: 'Создайте первый проект для начала работы',
+              actionText: 'Создать проект',
+              onAction: () {
+                // TODO: Navigate to create project
+              },
             ),
           ],
         ),
       );
     }
 
-    return RefreshIndicator(
+    return AppPullToRefresh(
       onRefresh: _loadProjects,
       child: ListView.builder(
         itemCount: _projects.length,
@@ -419,19 +449,19 @@ class _OrganizerPageState extends State<OrganizerPage> {
                           children: [
                             Expanded(
                               child: _buildActionButton(
-                                'Управлять проектом',
-                                Icons.settings,
-                                () => _showProjectManagementDialog(project),
-                                const Color(0xFF2196F3),
+                                onPressed: () => _showProjectManagementDialog(project),
+                                label: 'Управлять проектом',
+                                icon: Icons.settings,
+                                color: const Color(0xFF2196F3),
                               ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: _buildActionButton(
-                                'Участники',
-                                Icons.group,
-                                () => _showProjectParticipantsDialog(project),
-                                const Color(0xFF4CAF50),
+                                onPressed: () => _showProjectParticipantsDialog(project),
+                                label: 'Участники',
+                                icon: Icons.group,
+                                color: const Color(0xFF4CAF50),
                               ),
                             ),
                           ],
@@ -440,10 +470,10 @@ class _OrganizerPageState extends State<OrganizerPage> {
                         SizedBox(
                           width: double.infinity,
                           child: _buildActionButton(
-                            'Создать задачу',
-                            Icons.add_task,
-                            () => _showCreateTaskDialog(project),
-                            const Color(0xFFFF9800),
+                            onPressed: () => _showCreateTaskDialog(project),
+                            label: 'Создать задачу',
+                            icon: Icons.add_task,
+                            color: const Color(0xFFFF9800),
                           ),
                         ),
                       ],
@@ -473,13 +503,15 @@ class _OrganizerPageState extends State<OrganizerPage> {
         return Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
               colors: [
-                Color(0xFFE8F5E8),
-                Color(0xFFF1F8E9),
+                Color(0xFFF0F7FF), // Светло-голубой
+                Color(0xFFFFF5F5), // Светло-розовый
+                Color(0xFFF5FFF0), // Светло-зелёный
                 Color(0xFFFFFFFF),
               ],
+              stops: [0.0, 0.3, 0.6, 1.0],
             ),
           ),
           child: SingleChildScrollView(
@@ -502,29 +534,47 @@ class _OrganizerPageState extends State<OrganizerPage> {
                   },
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(24),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF4CAF50),
-                              borderRadius: BorderRadius.circular(16),
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Color(0xFF1976D2), // Синий
+                              Color(0xFF42A5F5), // Светло-синий
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(24),
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFF4CAF50).withOpacity(0.3),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 6),
+                              color: const Color(0xFF1976D2).withOpacity(0.4),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.3),
+                                  width: 2,
                                 ),
-                              ],
                             ),
                             child: const Icon(
-                              Icons.add_circle_outline,
+                                Icons.rocket_launch_rounded,
                               color: Colors.white,
-                              size: 28,
+                                size: 36,
                             ),
                           ),
-                          const SizedBox(width: 16),
+                            const SizedBox(width: 20),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -532,24 +582,27 @@ class _OrganizerPageState extends State<OrganizerPage> {
                                 const Text(
                                   'Создание нового проекта',
                                   style: TextStyle(
-                                    fontSize: 28,
+                                      fontSize: 26,
                                     fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2E7D32),
+                                      color: Colors.white,
+                                      letterSpacing: 0.5,
                                   ),
                                 ),
-                                const SizedBox(height: 4),
+                                  const SizedBox(height: 6),
                                 Text(
                                   'Заполните информацию о вашем экологическом проекте',
                                   style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey[600],
-                                    fontWeight: FontWeight.w500,
+                                      fontSize: 13,
+                                      color: Colors.white.withOpacity(0.9),
+                                      fontWeight: FontWeight.w400,
+                                      height: 1.3,
                                   ),
                                 ),
                               ],
                             ),
                           ),
                         ],
+                        ),
                       ),
                     ],
                   ),
@@ -631,20 +684,20 @@ class _OrganizerPageState extends State<OrganizerPage> {
 
                       // Выбор типа волонтерства
                       Container(
-                        padding: const EdgeInsets.all(20),
+                        padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(24),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.green.withOpacity(0.1),
-                              blurRadius: 20,
-                              offset: const Offset(0, 10),
+                              color: const Color(0xFFFF9800).withOpacity(0.15),
+                              blurRadius: 24,
+                              offset: const Offset(0, 12),
                             ),
                           ],
                           border: Border.all(
-                            color: const Color(0xFF4CAF50).withOpacity(0.2),
-                            width: 1,
+                            color: const Color(0xFFFF9800).withOpacity(0.2),
+                            width: 1.5,
                           ),
                         ),
                         child: Column(
@@ -653,47 +706,56 @@ class _OrganizerPageState extends State<OrganizerPage> {
                             Row(
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.all(8),
+                                  padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF9C27B0).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(12),
+                                    gradient: const LinearGradient(
+                                      colors: [Color(0xFFFF9800), Color(0xFFFFB74D)],
+                                    ),
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(0xFFFF9800).withOpacity(0.3),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
                                   ),
                                   child: const Icon(
-                                    Icons.category,
-                                    color: Color(0xFF9C27B0),
-                                    size: 20,
+                                    Icons.category_rounded,
+                                    color: Colors.white,
+                                    size: 22,
                                   ),
                                 ),
-                                const SizedBox(width: 12),
+                                const SizedBox(width: 16),
                                 const Text(
                                   'Тип волонтерства',
                                   style: TextStyle(
-                                    fontSize: 18,
+                                    fontSize: 20,
                                     fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2E7D32),
+                                    color: Color(0xFF2D3436),
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 18),
                             DropdownButtonFormField<String>(
                               value: _volunteerType,
                               decoration: InputDecoration(
                                 border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFF4CAF50)),
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: const BorderSide(color: Color(0xFFFF9800)),
                                 ),
                                 enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFF4CAF50)),
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: const BorderSide(color: Color(0xFFFF9800)),
                                 ),
                                 focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFF2E7D32), width: 2),
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: const BorderSide(color: Color(0xFFFF9800), width: 2),
                                 ),
                                 filled: true,
-                                fillColor: const Color(0xFFF1F8E9),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                fillColor: const Color(0xFFFFF5F7),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                               ),
                               items: const [
                                 DropdownMenuItem(
@@ -743,20 +805,20 @@ class _OrganizerPageState extends State<OrganizerPage> {
 
                       // Геолокация с красивым дизайном
                       Container(
-                        padding: const EdgeInsets.all(20),
+                        padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(24),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.green.withOpacity(0.1),
-                              blurRadius: 20,
-                              offset: const Offset(0, 10),
+                              color: const Color(0xFF4CAF50).withOpacity(0.2),
+                              blurRadius: 24,
+                              offset: const Offset(0, 12),
                             ),
                           ],
                           border: Border.all(
-                            color: const Color(0xFF4CAF50).withOpacity(0.2),
-                            width: 1,
+                            color: const Color(0xFF4CAF50).withOpacity(0.3),
+                            width: 1.5,
                           ),
                         ),
                         child: Column(
@@ -765,24 +827,33 @@ class _OrganizerPageState extends State<OrganizerPage> {
                             Row(
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.all(8),
+                                  padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF2196F3).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(12),
+                                    gradient: const LinearGradient(
+                                      colors: [Color(0xFF4CAF50), Color(0xFF81C784)],
+                                    ),
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(0xFF4CAF50).withOpacity(0.3),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
                                   ),
                                   child: const Icon(
-                                    Icons.location_on,
-                                    color: Color(0xFF2196F3),
-                                    size: 20,
+                                    Icons.location_on_rounded,
+                                    color: Colors.white,
+                                    size: 22,
                                   ),
                                 ),
-                                const SizedBox(width: 12),
+                                const SizedBox(width: 16),
                                 const Text(
                                   'Геолокация проекта',
                                   style: TextStyle(
-                                    fontSize: 18,
+                                    fontSize: 20,
                                     fontWeight: FontWeight.bold,
-                                    color: Color(0xFF2E7D32),
+                                    color: Color(0xFF2D3436),
                                   ),
                                 ),
                               ],
@@ -861,9 +932,25 @@ class _OrganizerPageState extends State<OrganizerPage> {
                                 ),
                               ),
                             ],
-                            const SizedBox(height: 16),
-                            SizedBox(
+                            const SizedBox(height: 18),
+                            Container(
                               width: double.infinity,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFF4CAF50), Color(0xFF81C784)],
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF4CAF50).withOpacity(0.4),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ],
+                              ),
                               child: ElevatedButton.icon(
                                 onPressed: _isGettingLocation
                                     ? null
@@ -873,13 +960,15 @@ class _OrganizerPageState extends State<OrganizerPage> {
                                         });
 
                                         try {
+                                          // Проверяем разрешение
                                           LocationPermission permission = await Geolocator.checkPermission();
                                           if (permission == LocationPermission.denied) {
                                             permission = await Geolocator.requestPermission();
                                             if (permission == LocationPermission.denied) {
+                                              if (!mounted) return;
                                               ScaffoldMessenger.of(context).showSnackBar(
-                                                SnackBar(
-                                                  content: const Text('Разрешение на геолокацию отклонено'),
+                                                const SnackBar(
+                                                  content: Text('Разрешение на геолокацию отклонено'),
                                                   backgroundColor: Colors.red,
                                                 ),
                                               );
@@ -890,10 +979,33 @@ class _OrganizerPageState extends State<OrganizerPage> {
                                             }
                                           }
 
+                                          if (permission == LocationPermission.deniedForever) {
+                                            if (!mounted) return;
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(
+                                                content: Text('Разрешение на геолокацию запрещено навсегда. Включите в настройках.'),
+                                                backgroundColor: Colors.red,
+                                                duration: Duration(seconds: 5),
+                                              ),
+                                            );
+                                            setState(() {
+                                              _isGettingLocation = false;
+                                            });
+                                            return;
+                                          }
+
+                                          // Получаем позицию с таймаутом
                                           Position position = await Geolocator.getCurrentPosition(
-                                            desiredAccuracy: LocationAccuracy.high,
+                                            desiredAccuracy: LocationAccuracy.medium,
+                                            timeLimit: const Duration(seconds: 10),
+                                          ).timeout(
+                                            const Duration(seconds: 15),
+                                            onTimeout: () {
+                                              throw Exception('Таймаут получения геолокации. Попробуйте еще раз.');
+                                            },
                                           );
 
+                                          if (!mounted) return;
                                           setState(() {
                                             _latitude = position.latitude;
                                             _longitude = position.longitude;
@@ -901,44 +1013,61 @@ class _OrganizerPageState extends State<OrganizerPage> {
                                           });
 
                                           ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: const Text('Геолокация получена!'),
+                                            const SnackBar(
+                                              content: Text('Геолокация получена!'),
                                               backgroundColor: Colors.green,
+                                              duration: Duration(seconds: 2),
                                             ),
                                           );
                                         } catch (e) {
                                           print('Ошибка получения геолокации: $e');
+                                          if (!mounted) return;
                                           setState(() {
                                             _isGettingLocation = false;
                                           });
+
+                                          String errorMessage = 'Ошибка получения геолокации';
+                                          if (e.toString().contains('Таймаут')) {
+                                            errorMessage = 'Не удалось получить геолокацию. Проверьте GPS.';
+                                          } else if (e.toString().contains('location service')) {
+                                            errorMessage = 'Включите службу геолокации в настройках';
+                                          }
+
                                           ScaffoldMessenger.of(context).showSnackBar(
                                             SnackBar(
-                                              content: const Text('Ошибка получения геолокации'),
+                                              content: Text(errorMessage),
                                               backgroundColor: Colors.red,
+                                              duration: const Duration(seconds: 3),
                                             ),
                                           );
                                         }
                                       },
                                 icon: _isGettingLocation
                                     ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
+                                        width: 22,
+                                        height: 22,
                                         child: CircularProgressIndicator(
-                                          strokeWidth: 2,
+                                          strokeWidth: 2.5,
                                           color: Colors.white,
                                         ),
                                       )
-                                    : const Icon(Icons.my_location),
-                                label: Text(_isGettingLocation ? 'Получение...' : 'Получить геолокацию'),
+                                    : const Icon(Icons.my_location_rounded, size: 22),
+                                label: Text(
+                                  _isGettingLocation ? 'Получение...' : 'Получить геолокацию',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF2196F3),
+                                  backgroundColor: Colors.transparent,
                                   foregroundColor: Colors.white,
+                                  shadowColor: Colors.transparent,
                                   padding: const EdgeInsets.symmetric(vertical: 16),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(16),
                                   ),
-                                  elevation: 4,
-                                  shadowColor: const Color(0xFF2196F3).withOpacity(0.3),
+                                  elevation: 0,
                                 ),
                               ),
                             ),
@@ -963,19 +1092,20 @@ class _OrganizerPageState extends State<OrganizerPage> {
                         },
                         child: Container(
                           width: double.infinity,
-                          height: 60,
+                          height: 64,
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
-                              colors: [Color(0xFF4CAF50), Color(0xFF66BB6A)],
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
+                              colors: [Color(0xFF4CAF50), Color(0xFF81C784)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
                             ),
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF4CAF50).withOpacity(0.3),
-                                blurRadius: 16,
-                                offset: const Offset(0, 8),
+                                color: const Color(0xFF4CAF50).withOpacity(0.5),
+                                blurRadius: 20,
+                                offset: const Offset(0, 10),
+                                spreadRadius: 1,
                               ),
                             ],
                           ),
@@ -1007,6 +1137,22 @@ class _OrganizerPageState extends State<OrganizerPage> {
 
 
                               try {
+                                final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                                final token = authProvider.token;
+
+                                if (token == null || token.isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: const Text('Ошибка авторизации. Пожалуйста, войдите снова'),
+                                      backgroundColor: Colors.red,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+
                                 final requestData = {
                                   'title': _titleController.text,
                                   'description': _descriptionController.text,
@@ -1019,10 +1165,12 @@ class _OrganizerPageState extends State<OrganizerPage> {
                                   requestData['longitude'] = _longitude.toString();
                                 }
 
+                                print('🔍 Creating project with token: ${token.substring(0, 50)}...');
+
                                 final response = await http.post(
                                   Uri.parse(ApiService.organizerProjectsUrl),
                                   headers: {
-                                    'Authorization': 'Bearer $_token',
+                                    'Authorization': 'Bearer $token',
                                     'Content-Type': 'application/json',
                                   },
                                   body: jsonEncode(requestData),
@@ -1087,17 +1235,40 @@ class _OrganizerPageState extends State<OrganizerPage> {
                               ),
                             ),
                             child: _isCreating
-                                ? const CircularProgressIndicator(color: Colors.white)
+                                ? const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 3,
+                                        ),
+                                      ),
+                                      SizedBox(width: 16),
+                                      Text(
+                                        'Создание...',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
+                                  )
                                 : const Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      Icon(Icons.add_circle_outline, size: 24),
+                                      Icon(Icons.rocket_launch_rounded, size: 26, color: Colors.white),
                                       SizedBox(width: 12),
                                       Text(
                                         'Создать проект',
                                         style: TextStyle(
-                                          fontSize: 18,
+                                          fontSize: 19,
                                           fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                          letterSpacing: 0.5,
                                         ),
                                       ),
                                     ],
@@ -1129,7 +1300,7 @@ class _OrganizerPageState extends State<OrganizerPage> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
             color: Colors.green.withOpacity(0.1),
@@ -1208,44 +1379,63 @@ class _OrganizerPageState extends State<OrganizerPage> {
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => Dialog(
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(28),
         ),
-        elevation: 10,
-        backgroundColor: Colors.white,
+        elevation: 0,
+        backgroundColor: Colors.transparent,
         child: Container(
-          width: MediaQuery.of(context).size.width * 0.9,
-          constraints: const BoxConstraints(maxHeight: 600),
+          width: MediaQuery.of(context).size.width * 0.92,
+          constraints: const BoxConstraints(maxHeight: 700),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 30,
+                offset: const Offset(0, 15),
+              ),
+            ],
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Красивый заголовок с градиентом
+              // Современный заголовок с градиентом
               Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(24),
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Color(0xFF4CAF50), Color(0xFF66BB6A)],
+                    colors: [Color(0xFFFF6B35), Color(0xFFFF8C5A)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
+                    topLeft: Radius.circular(28),
+                    topRight: Radius.circular(28),
                   ),
                 ),
-                child: Row(
+                child: Column(
                   children: [
+                    Row(
+                      children: [
+                        // Иконка с эффектом
                     Container(
-                      padding: const EdgeInsets.all(10),
+                          padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(12),
+                            color: Colors.white.withOpacity(0.25),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.3),
+                              width: 2,
+                            ),
                       ),
                       child: const Icon(
-                        Icons.settings,
+                            Icons.edit_note_rounded,
                         color: Colors.white,
-                        size: 24,
+                            size: 28,
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -1257,29 +1447,46 @@ class _OrganizerPageState extends State<OrganizerPage> {
                             'Управление проектом',
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 20,
+                                  fontSize: 22,
                               fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
                             ),
                           ),
+                              const SizedBox(height: 4),
                           Text(
-                            project.title,
-                            style: const TextStyle(
-                              color: Colors.white,
+                                project.title.length > 35 ? '${project.title.substring(0, 35)}...' : project.title,
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.9),
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
                             ),
+                                maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
                     ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(
-                        Icons.close,
+                        // Кнопка закрытия
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => Navigator.pop(context),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.close_rounded,
                         color: Colors.white,
                         size: 24,
+                              ),
+                            ),
                       ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -1288,142 +1495,132 @@ class _OrganizerPageState extends State<OrganizerPage> {
               // Содержимое с анимацией
               Flexible(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Название проекта
+                      // Заголовок секции
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Row(
+                          children: [
                       Container(
-                        margin: const EdgeInsets.only(bottom: 16),
+                              width: 4,
+                              height: 20,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8F9FA),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFE9ECEF)),
-                        ),
-                        child: TextField(
-                          controller: titleController,
-                          decoration: InputDecoration(
-                            labelText: 'Название проекта',
-                            labelStyle: const TextStyle(
-                              color: Color(0xFF4CAF50),
-                              fontWeight: FontWeight.w500,
-                            ),
-                            border: InputBorder.none,
-                            contentPadding: const EdgeInsets.all(16),
-                            prefixIcon: Container(
-                              padding: const EdgeInsets.all(12),
-                              child: const Icon(
-                                Icons.title,
-                                color: Color(0xFF4CAF50),
-                                size: 20,
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFFFF6B35), Color(0xFFFF8C5A)],
+                                ),
+                                borderRadius: BorderRadius.circular(2),
                               ),
                             ),
-                          ),
-                          style: const TextStyle(
-                            color: Color(0xFF2E7D32),
-                            fontSize: 16,
-                          ),
+                            const SizedBox(width: 12),
+                            const Text(
+                              'Информация о проекте',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF2D3748),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
+
+                      // Название проекта
+                      _buildModernTextField(
+                        controller: titleController,
+                        label: 'Название проекта',
+                        icon: Icons.title_rounded,
+                        color: const Color(0xFFFF6B35),
+                      ),
+                      const SizedBox(height: 16),
 
                       // Описание проекта
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8F9FA),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFE9ECEF)),
-                        ),
-                        child: TextField(
+                      _buildModernTextField(
                           controller: descriptionController,
+                        label: 'Описание проекта',
+                        icon: Icons.description_rounded,
+                        color: const Color(0xFFFF6B35),
                           maxLines: 4,
-                          decoration: InputDecoration(
-                            labelText: 'Описание проекта',
-                            labelStyle: const TextStyle(
-                              color: Color(0xFF4CAF50),
-                              fontWeight: FontWeight.w500,
-                            ),
-                            border: InputBorder.none,
-                            contentPadding: const EdgeInsets.all(16),
-                            prefixIcon: Container(
-                              padding: const EdgeInsets.all(12),
-                              child: const Icon(
-                                Icons.description,
-                                color: Color(0xFF4CAF50),
-                                size: 20,
-                              ),
-                            ),
-                          ),
-                          style: const TextStyle(
-                            color: Color(0xFF2E7D32),
-                            fontSize: 16,
-                          ),
-                        ),
                       ),
+                      const SizedBox(height: 16),
 
                       // Город
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 24),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8F9FA),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFE9ECEF)),
-                        ),
-                        child: TextField(
+                      _buildModernTextField(
                           controller: cityController,
-                          decoration: InputDecoration(
-                            labelText: 'Город',
-                            labelStyle: const TextStyle(
-                              color: Color(0xFF4CAF50),
-                              fontWeight: FontWeight.w500,
-                            ),
-                            border: InputBorder.none,
-                            contentPadding: const EdgeInsets.all(16),
-                            prefixIcon: Container(
-                              padding: const EdgeInsets.all(12),
-                              child: const Icon(
-                                Icons.location_city,
-                                color: Color(0xFF4CAF50),
-                                size: 20,
-                              ),
-                            ),
-                          ),
-                          style: const TextStyle(
-                            color: Color(0xFF2E7D32),
-                            fontSize: 16,
-                          ),
-                        ),
+                        label: 'Город',
+                        icon: Icons.location_city_rounded,
+                        color: const Color(0xFFFF6B35),
                       ),
+                      const SizedBox(height: 24),
 
                       // Статистика проекта
                       Container(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF1F8E9),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFF4CAF50).withOpacity(0.3)),
+                          gradient: LinearGradient(
+                            colors: [
+                              const Color(0xFFFF6B35).withOpacity(0.1),
+                              const Color(0xFFFF8C5A).withOpacity(0.05),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: const Color(0xFFFF6B35).withOpacity(0.2),
+                            width: 1.5,
+                          ),
                         ),
                         child: Column(
                           children: [
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                               children: [
-                                Expanded(
-                                  child: _buildStatItem('${project.volunteerCount}', 'Волонтеров', Icons.group),
+                                const Icon(
+                                  Icons.analytics_rounded,
+                                  color: Color(0xFFFF6B35),
+                                  size: 20,
                                 ),
                                 const SizedBox(width: 8),
+                                const Text(
+                                  'Статистика проекта',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF2D3748),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
                                 Expanded(
-                                  child: _buildStatItem('${project.taskCount}', 'Задач', Icons.task),
+                                  child: _buildModernStatCard(
+                                    '${project.volunteerCount}',
+                                    'Волонтеров',
+                                    Icons.people_rounded,
+                                    const Color(0xFF1976D2),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildModernStatCard(
+                                    '${project.taskCount}',
+                                    'Задач',
+                                    Icons.task_alt_rounded,
+                                    const Color(0xFF4CAF50),
+                                  ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 12),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                _buildStatItem(project.status == 'approved' ? 'Одобрен' : 'На проверке',
-                                  'Статус', project.status == 'approved' ? Icons.check_circle : Icons.schedule),
-                              ],
+                            _buildModernStatCard(
+                              project.status == 'approved' ? 'Одобрен' : 'На проверке',
+                              'Статус',
+                              project.status == 'approved' ? Icons.check_circle_rounded : Icons.schedule_rounded,
+                              project.status == 'approved' ? const Color(0xFF4CAF50) : const Color(0xFFFF6B35),
                             ),
                           ],
                         ),
@@ -1435,126 +1632,175 @@ class _OrganizerPageState extends State<OrganizerPage> {
 
               // Кнопки действий
               Container(
-                padding: const EdgeInsets.all(20),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF8F9FA),
-                  borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(20),
-                    bottomRight: Radius.circular(20),
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(28),
+                    bottomRight: Radius.circular(28),
+                  ),
+                  border: Border(
+                    top: BorderSide(
+                      color: Colors.grey[200]!,
+                      width: 1,
+                    ),
                   ),
                 ),
                 child: Row(
                   children: [
+                    // Кнопка "Отмена"
                     Expanded(
-                      child: TextButton(
+                      child: _buildActionButton(
                         onPressed: () => Navigator.pop(context),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          'Отмена',
-                          style: TextStyle(
-                            color: Color(0xFF6C757D),
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        label: 'Отмена',
+                        icon: Icons.close_rounded,
+                        color: Colors.grey[600]!,
+                        isOutlined: true,
                       ),
                     ),
                     const SizedBox(width: 12),
+                    // Кнопка "Сохранить"
                     Expanded(
-                      child: ElevatedButton(
+                      child: _buildActionButton(
                         onPressed: () async {
+                          if (titleController.text.trim().isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Введите название проекта')),
+                            );
+                            return;
+                          }
+
                           final success = await _updateProject(project.id, {
-                            'title': titleController.text,
-                            'description': descriptionController.text,
-                            'city': cityController.text,
+                            'title': titleController.text.trim(),
+                            'description': descriptionController.text.trim(),
+                            'city': cityController.text.trim(),
                           });
 
                           if (success) {
                             Navigator.pop(context);
                             _loadProjects();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Проект успешно обновлен!')),
+                            );
                           }
                         },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF4CAF50),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 3,
-                        ),
-                        child: const Text(
-                          'Сохранить',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        label: 'Сохранить',
+                        icon: Icons.check_rounded,
+                        color: const Color(0xFF4CAF50),
                       ),
                     ),
                     const SizedBox(width: 12),
+                    // Кнопка "Удалить"
                     Expanded(
-                      child: ElevatedButton(
+                      child: _buildActionButton(
                         onPressed: () async {
                           final confirmed = await showDialog<bool>(
                             context: context,
-                            builder: (context) => AlertDialog(
+                            builder: (context) => Dialog(
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
+                                borderRadius: BorderRadius.circular(24),
                               ),
-                              title: Row(
+                              child: Container(
+                                padding: const EdgeInsets.all(24),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Container(
-                                    padding: const EdgeInsets.all(8),
+                                      padding: const EdgeInsets.all(16),
                                     decoration: BoxDecoration(
                                       color: Colors.red.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(8),
+                                        shape: BoxShape.circle,
                                     ),
                                     child: const Icon(
-                                      Icons.warning,
+                                        Icons.warning_rounded,
                                       color: Colors.red,
-                                      size: 20,
+                                        size: 48,
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
+                                    const SizedBox(height: 20),
                                   const Text(
-                                    'Подтверждение',
+                                      'Удалить проект?',
                                     style: TextStyle(
-                                      color: Colors.red,
+                                        fontSize: 22,
                                       fontWeight: FontWeight.bold,
+                                        color: Color(0xFF2D3748),
+                                      ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                              content: const Text(
-                                'Вы действительно хотите удалить этот проект?\n\nЭто действие нельзя отменить.',
-                                style: TextStyle(fontSize: 16),
-                              ),
-                              actions: [
-                                TextButton(
+                                    const SizedBox(height: 12),
+                                    const Text(
+                                      'Это действие нельзя отменить. Все данные проекта будут удалены безвозвратно.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        color: Color(0xFF718096),
+                                        height: 1.5,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 24),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: OutlinedButton(
                                   onPressed: () => Navigator.pop(context, false),
+                                            style: OutlinedButton.styleFrom(
+                                              padding: const EdgeInsets.symmetric(vertical: 14),
+                                              side: BorderSide(color: Colors.grey[300]!),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                            ),
                                   child: const Text(
                                     'Отмена',
-                                    style: TextStyle(color: Color(0xFF6C757D)),
-                                  ),
-                                ),
-                                ElevatedButton(
+                                              style: TextStyle(
+                                                color: Color(0xFF718096),
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              gradient: const LinearGradient(
+                                                colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+                                              ),
+                                              borderRadius: BorderRadius.circular(12),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.red.withOpacity(0.3),
+                                                  blurRadius: 8,
+                                                  offset: const Offset(0, 4),
+                                                ),
+                                              ],
+                                            ),
+                                            child: ElevatedButton(
                                   onPressed: () => Navigator.pop(context, true),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red,
+                                                backgroundColor: Colors.transparent,
                                     foregroundColor: Colors.white,
+                                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                                shadowColor: Colors.transparent,
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
+                                                  borderRadius: BorderRadius.circular(12),
+                                                ),
+                                              ),
+                                              child: const Text(
+                                                'Удалить',
+                                                style: TextStyle(fontWeight: FontWeight.w600),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                  child: const Text('Удалить'),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
                           );
 
@@ -1563,25 +1809,15 @@ class _OrganizerPageState extends State<OrganizerPage> {
                             if (success) {
                               Navigator.pop(context);
                               _loadProjects();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Проект успешно удален')),
+                              );
                             }
                           }
                         },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 3,
-                        ),
-                        child: const Text(
-                          'Удалить',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        label: 'Удалить',
+                        icon: Icons.delete_rounded,
+                        color: Colors.red,
                       ),
                     ),
                   ],
@@ -1594,38 +1830,185 @@ class _OrganizerPageState extends State<OrganizerPage> {
     );
   }
 
-  Widget _buildStatItem(String value, String label, IconData icon) {
-    return Column(
+  // Helper методы для современного дизайна диалогов
+  
+  Widget _buildModernTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required Color color,
+    int maxLines = 1,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: color.withOpacity(0.2),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        style: const TextStyle(
+          color: Color(0xFF2D3748),
+          fontSize: 15,
+          fontWeight: FontWeight.w500,
+        ),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(
+            color: color,
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
+          ),
+          prefixIcon: Container(
+            margin: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [color.withOpacity(0.2), color.withOpacity(0.1)],
+              ),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 20,
+            ),
+          ),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.all(16),
+          floatingLabelBehavior: FloatingLabelBehavior.auto,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModernStatCard(String value, String label, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: color.withOpacity(0.2),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
       children: [
         Container(
-          padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: const Color(0xFF4CAF50).withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
+              gradient: LinearGradient(
+                colors: [color, color.withOpacity(0.8)],
+              ),
+              borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(
             icon,
-            color: const Color(0xFF4CAF50),
-            size: 20,
+              color: Colors.white,
+              size: 22,
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
         Text(
           value,
           style: const TextStyle(
-            fontSize: 16,
+                    fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: Color(0xFF2E7D32),
+                    color: Color(0xFF2D3748),
           ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
         ),
         Text(
           label,
           style: const TextStyle(
             fontSize: 12,
-            color: Color(0xFF6C757D),
+                    color: Color(0xFF718096),
+                    fontWeight: FontWeight.w500,
           ),
         ),
       ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required VoidCallback onPressed,
+    required String label,
+    required IconData icon,
+    required Color color,
+    bool isOutlined = false,
+  }) {
+    if (isOutlined) {
+      return OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 18),
+        label: Text(label),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          foregroundColor: color,
+          side: BorderSide(color: color.withOpacity(0.3), width: 1.5),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [color, color.withOpacity(0.85)],
+        ),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 18),
+        label: Text(label),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shadowColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1636,52 +2019,83 @@ class _OrganizerPageState extends State<OrganizerPage> {
       context: context,
       builder: (context) => Dialog(
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(28),
         ),
         child: Container(
           width: MediaQuery.of(context).size.width * 0.95,
           height: MediaQuery.of(context).size.height * 0.8,
-          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(28),
+            color: Colors.white,
+          ),
           child: Column(
             children: [
-              // Заголовок
+              // Заголовок с градиентом
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF1976D2), Color(0xFF42A5F5)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(28),
+                    topRight: Radius.circular(28),
+                  ),
+                ),
+                child: Column(
+                  children: [
               Row(
                 children: [
-                  const Icon(
-                    Icons.group,
-                    color: Color(0xFF4CAF50),
-                    size: 24,
-                  ),
-                  const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.people_rounded,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
                       'Участники',
-                      style: const TextStyle(
-                        fontSize: 18,
+                                style: TextStyle(
+                                  fontSize: 22,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF2E7D32),
+                                  color: Colors.white,
+                                ),
+                              ),
+                              Text(
+                                project.title.length > 30 ? '${project.title.substring(0, 30)}...' : project.title,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.white.withOpacity(0.9),
+                                  fontWeight: FontWeight.w500,
                       ),
                       overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                     ),
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close, color: Color(0xFF4CAF50), size: 20),
+                          icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                project.title.length > 30 ? '${project.title.substring(0, 30)}...' : project.title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF4CAF50),
-                  fontWeight: FontWeight.w500,
+                  ],
                 ),
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 20),
+
+              const SizedBox(height: 16),
 
               // Список участников
               Expanded(
@@ -1707,28 +2121,45 @@ class _OrganizerPageState extends State<OrganizerPage> {
                         ),
                       )
                     : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         itemCount: participants.length,
                         itemBuilder: (context, index) {
                           final participant = participants[index];
                           return Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.all(12),
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF1F8E9),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFF4CAF50)),
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFF1976D2).withOpacity(0.2), width: 1.5),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF1976D2).withOpacity(0.1),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
                                   children: [
-                                    const Icon(
-                                      Icons.person,
-                                      color: Color(0xFF4CAF50),
-                                      size: 18,
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [Color(0xFF1976D2), Color(0xFF42A5F5)],
+                                        ),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Icon(
+                                        Icons.person_rounded,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
                                     ),
-                                    const SizedBox(width: 6),
+                                    const SizedBox(width: 12),
                                     Expanded(
                                       child: Text(
                                         participant.name.length > 20
@@ -1736,25 +2167,41 @@ class _OrganizerPageState extends State<OrganizerPage> {
                                             : participant.name,
                                         style: const TextStyle(
                                           fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                          color: Color(0xFF2E7D32),
+                                          fontSize: 16,
+                                          color: Color(0xFF2D3436),
                                         ),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFFFC107),
+                                        gradient: const LinearGradient(
+                                          colors: [Color(0xFFFF9800), Color(0xFFFFB74D)],
+                                        ),
                                         borderRadius: BorderRadius.circular(12),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFFFF9800).withOpacity(0.3),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
                                       ),
-                                      child: Text(
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.star_rounded, color: Colors.white, size: 14),
+                                          const SizedBox(width: 4),
+                                          Text(
                                         '${participant.rating}',
                                         style: const TextStyle(
                                           color: Colors.white,
-                                          fontSize: 10,
+                                              fontSize: 12,
                                           fontWeight: FontWeight.bold,
                                         ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ],
@@ -1762,20 +2209,20 @@ class _OrganizerPageState extends State<OrganizerPage> {
                                 const SizedBox(height: 6),
                                 Row(
                                   children: [
-                                    const Icon(
-                                      Icons.email,
-                                      color: Color(0xFF4CAF50),
-                                      size: 14,
+                                    Icon(
+                                      Icons.email_rounded,
+                                      color: Colors.grey[600],
+                                      size: 16,
                                     ),
-                                    const SizedBox(width: 6),
+                                    const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
                                         participant.email.length > 25
                                             ? '${participant.email.substring(0, 25)}...'
                                             : participant.email,
                                         style: TextStyle(
-                                          color: Colors.grey[700],
-                                          fontSize: 12,
+                                          color: Colors.grey[600],
+                                          fontSize: 13,
                                         ),
                                         overflow: TextOverflow.ellipsis,
                                       ),
@@ -1908,77 +2355,133 @@ class _OrganizerPageState extends State<OrganizerPage> {
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Text(
-            'Создать задачу',
-            style: const TextStyle(
-              color: Color(0xFF2E7D32),
-              fontWeight: FontWeight.bold,
-            ),
+        builder: (context, setState) => Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28),
           ),
-          content: SingleChildScrollView(
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.92,
+            constraints: const BoxConstraints(maxHeight: 700),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.15),
+                  blurRadius: 30,
+                  offset: const Offset(0, 15),
+                ),
+              ],
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Описание задачи
-                TextField(
-                  controller: textController,
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    labelText: 'Описание задачи',
-                    labelStyle: const TextStyle(color: Color(0xFF4CAF50)),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFF4CAF50)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFF4CAF50)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFF2E7D32), width: 2),
-                    ),
-                    prefixIcon: const Icon(Icons.description, color: Color(0xFF4CAF50)),
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // Выбор даты дедлайна
+                // Заголовок с градиентом
                 Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F8E9),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFF4CAF50)),
+                  padding: const EdgeInsets.all(24),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF4CAF50), Color(0xFF66BB6A)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(28),
+                      topRight: Radius.circular(28),
+                    ),
                   ),
+                  child: Row(
+                    children: [
+                Container(
+                        padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.25),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.3),
+                            width: 2,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.add_task_rounded,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      const Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Дедлайн задачи',
+                            Text(
+                              'Создать задачу',
                         style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF2E7D32),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              selectedDeadline != null
-                                  ? '${selectedDeadline!.day}.${selectedDeadline!.month}.${selectedDeadline!.year}'
-                                  : 'Выберите дату',
-                              style: TextStyle(
-                                color: selectedDeadline != null ? Colors.black : Colors.grey,
-                                fontSize: 16,
+                                letterSpacing: 0.5,
                               ),
                             ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Добавьте новую задачу для проекта',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => Navigator.pop(context),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.close_rounded,
+                              color: Colors.white,
+                              size: 24,
+                            ),
                           ),
-                          IconButton(
-                            onPressed: () async {
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Содержимое
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Описание задачи
+                        _buildModernTextField(
+                          controller: textController,
+                          label: 'Описание задачи *',
+                          icon: Icons.description_rounded,
+                          color: const Color(0xFF4CAF50),
+                          maxLines: 3,
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Дедлайн задачи
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () async {
                               final DateTime? picked = await showDatePicker(
                                 context: context,
                                 initialDate: selectedDeadline ?? DateTime.now(),
@@ -2004,50 +2507,113 @@ class _OrganizerPageState extends State<OrganizerPage> {
                                 });
                               }
                             },
-                            icon: const Icon(Icons.calendar_today, color: Color(0xFF4CAF50)),
-                          ),
-                        ],
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              padding: const EdgeInsets.all(18),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: const Color(0xFF4CAF50).withOpacity(0.2),
+                                  width: 1.5,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF4CAF50).withOpacity(0.08),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 20),
-
-                // Выбор времени
+                              child: Row(
+                                children: [
                 Container(
-                  padding: const EdgeInsets.all(16),
+                                    padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F8E9),
+                                      gradient: LinearGradient(
+                                        colors: [const Color(0xFF4CAF50).withOpacity(0.2), const Color(0xFF4CAF50).withOpacity(0.1)],
+                                      ),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFF4CAF50)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Время выполнения',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF2E7D32),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
+                                    ),
+                                    child: const Icon(
+                                      Icons.calendar_today_rounded,
+                                      color: Color(0xFF4CAF50),
+                                      size: 22,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 14),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const Text(
-                                  'Начало',
+                                          'Дедлайн задачи',
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: Color(0xFF4CAF50),
-                                    fontWeight: FontWeight.w500,
+                                            color: Color(0xFF718096),
+                                            fontWeight: FontWeight.w600,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
-                                InkWell(
+                                        Text(
+                                          selectedDeadline != null
+                                              ? '${selectedDeadline!.day}.${selectedDeadline!.month}.${selectedDeadline!.year}'
+                                              : 'Выберите дату',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                            color: selectedDeadline != null ? const Color(0xFF2D3748) : const Color(0xFF718096),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const Icon(
+                                    Icons.arrow_forward_ios_rounded,
+                                    color: Color(0xFF4CAF50),
+                                    size: 16,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Время выполнения
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 4,
+                                height: 16,
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFF4CAF50), Color(0xFF66BB6A)],
+                                  ),
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'Время выполнения',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF2D3748),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            // Время начала
+                            Expanded(
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
                                   onTap: () async {
                                     final TimeOfDay? picked = await showTimePicker(
                                       context: context,
@@ -2072,47 +2638,68 @@ class _OrganizerPageState extends State<OrganizerPage> {
                                       });
                                     }
                                   },
+                                  borderRadius: BorderRadius.circular(14),
                                   child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    padding: const EdgeInsets.all(14),
                                     decoration: BoxDecoration(
-                                      border: Border.all(color: const Color(0xFF4CAF50)),
-                                      borderRadius: BorderRadius.circular(8),
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: const Color(0xFF4CAF50).withOpacity(0.2),
+                                        width: 1.5,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: const Color(0xFF4CAF50).withOpacity(0.06),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 3),
+                                        ),
+                                      ],
                                     ),
-                                    child: Row(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Expanded(
-                                          child: Text(
+                                        Row(
+                                          children: [
+                                            Icon(
+                                              Icons.access_time_rounded,
+                                              color: const Color(0xFF4CAF50),
+                                              size: 18,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            const Text(
+                                              'Начало',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: Color(0xFF718096),
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
                                             selectedStartTime != null
                                                 ? selectedStartTime!.format(context)
-                                                : 'Выберите время',
+                                              : '--:--',
                                             style: TextStyle(
-                                              color: selectedStartTime != null ? Colors.black : Colors.grey,
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: selectedStartTime != null ? const Color(0xFF2D3748) : const Color(0xFF718096),
                                             ),
                                           ),
-                                        ),
-                                        const Icon(Icons.access_time, color: Color(0xFF4CAF50), size: 20),
                                       ],
                                     ),
                                   ),
                                 ),
-                              ],
                             ),
                           ),
                           const SizedBox(width: 12),
+                            // Время окончания
                           Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Окончание',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFF4CAF50),
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                InkWell(
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
                                   onTap: () async {
                                     final TimeOfDay? picked = await showTimePicker(
                                       context: context,
@@ -2137,30 +2724,60 @@ class _OrganizerPageState extends State<OrganizerPage> {
                                       });
                                     }
                                   },
+                                  borderRadius: BorderRadius.circular(14),
                                   child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    padding: const EdgeInsets.all(14),
                                     decoration: BoxDecoration(
-                                      border: Border.all(color: const Color(0xFF4CAF50)),
-                                      borderRadius: BorderRadius.circular(8),
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: const Color(0xFF4CAF50).withOpacity(0.2),
+                                        width: 1.5,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: const Color(0xFF4CAF50).withOpacity(0.06),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 3),
+                                        ),
+                                      ],
                                     ),
-                                    child: Row(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Expanded(
-                                          child: Text(
+                                        Row(
+                                          children: [
+                                            Icon(
+                                              Icons.access_time_filled_rounded,
+                                              color: const Color(0xFF4CAF50),
+                                              size: 18,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            const Text(
+                                              'Окончание',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: Color(0xFF718096),
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
                                             selectedEndTime != null
                                                 ? selectedEndTime!.format(context)
-                                                : 'Выберите время',
+                                              : '--:--',
                                             style: TextStyle(
-                                              color: selectedEndTime != null ? Colors.black : Colors.grey,
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: selectedEndTime != null ? const Color(0xFF2D3748) : const Color(0xFF718096),
                                             ),
                                           ),
-                                        ),
-                                        const Icon(Icons.access_time, color: Color(0xFF4CAF50), size: 20),
                                       ],
                                     ),
                                   ),
                                 ),
-                              ],
                             ),
                           ),
                         ],
@@ -2168,32 +2785,51 @@ class _OrganizerPageState extends State<OrganizerPage> {
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFF4CAF50),
-              ),
-              child: const Text('Отмена'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (textController.text.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text('Введите описание задачи'),
-                      backgroundColor: Colors.red,
+                ),
+                // Кнопки действий
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(28),
+                      bottomRight: Radius.circular(28),
                     ),
+                    border: Border(
+                      top: BorderSide(
+                        color: Colors.grey[200]!,
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      // Кнопка "Отмена"
+                      Expanded(
+                        child: _buildActionButton(
+              onPressed: () => Navigator.pop(context),
+                          label: 'Отмена',
+                          icon: Icons.close_rounded,
+                          color: Colors.grey[600]!,
+                          isOutlined: true,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Кнопка "Создать"
+                      Expanded(
+                        flex: 2,
+                        child: _buildActionButton(
+              onPressed: () async {
+                            if (textController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Введите описание задачи')),
                   );
                   return;
                 }
 
                 try {
                   final requestData = {
-                    'text': textController.text,
+                                'text': textController.text.trim(),
                   };
 
                   // Добавляем дедлайн если выбран
@@ -2209,10 +2845,19 @@ class _OrganizerPageState extends State<OrganizerPage> {
                     requestData['end_time'] = '${selectedEndTime!.hour.toString().padLeft(2, '0')}:${selectedEndTime!.minute.toString().padLeft(2, '0')}';
                   }
 
+                  final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                  final token = authProvider.token;
+                  if (token == null || token.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Ошибка авторизации')),
+                    );
+                    return;
+                  }
+
                   final response = await http.post(
                     Uri.parse(ApiService.projectTasksUrl(project.id)),
                     headers: {
-                      'Authorization': 'Bearer $_token',
+                      'Authorization': 'Bearer $token',
                       'Content-Type': 'application/json',
                     },
                     body: jsonEncode(requestData),
@@ -2220,14 +2865,14 @@ class _OrganizerPageState extends State<OrganizerPage> {
 
                   if (response.statusCode == 201) {
                     final data = jsonDecode(response.body);
+                                Navigator.pop(context);
+                                _loadProjects();
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(data['message'] ?? 'Задача создана успешно!'),
                         backgroundColor: Colors.green,
                       ),
                     );
-                    Navigator.pop(context);
-                    _loadProjects(); // Обновляем список проектов
                   } else {
                     final data = jsonDecode(response.body);
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -2247,17 +2892,17 @@ class _OrganizerPageState extends State<OrganizerPage> {
                   );
                 }
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF4CAF50),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                          label: 'Создать задачу',
+                          icon: Icons.add_task_rounded,
+                          color: const Color(0xFF4CAF50),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              child: const Text('Создать задачу'),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -2266,37 +2911,6 @@ class _OrganizerPageState extends State<OrganizerPage> {
   Widget _buildStatisticsTab() {
     return const Center(
       child: Text('Статистика проектов\n(будет реализована)'),
-    );
-  }
-
-  Widget _buildActionButton(String title, IconData icon, VoidCallback onPressed, Color color) {
-    return ElevatedButton(
-      onPressed: onPressed,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        elevation: 3,
-        shadowColor: color.withOpacity(0.3),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 24),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -2372,10 +2986,19 @@ class _OrganizerPageState extends State<OrganizerPage> {
               }
 
               try {
+                final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                final token = authProvider.token;
+                if (token == null || token.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Ошибка авторизации')),
+                  );
+                  return;
+                }
+
                 final response = await http.post(
                   Uri.parse(ApiService.organizerProjectsUrl),
                   headers: {
-                    'Authorization': 'Bearer $_token',
+                    'Authorization': 'Bearer $token',
                     'Content-Type': 'application/json',
                   },
                   body: jsonEncode({
@@ -2419,6 +3042,612 @@ class _OrganizerPageState extends State<OrganizerPage> {
               foregroundColor: Colors.white,
             ),
             child: const Text('Создать'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Вкладка "Профиль" с аналитикой и графиками
+  Widget _buildProfileTab() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFF0F7FF),
+            Color(0xFFFFF5F5),
+            Color(0xFFFFFFFF),
+          ],
+        ),
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Заголовок
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF1976D2), Color(0xFF42A5F5)],
+                ),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF1976D2).withOpacity(0.4),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Icon(
+                      Icons.analytics_rounded,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                  ),
+                  const SizedBox(width: 20),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Аналитика и статистика',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          'Следите за эффективностью ваших проектов',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Карточки статистики
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
+                    'Всего проектов',
+                    _projects.length.toString(),
+                    Icons.business_rounded,
+                    const Color(0xFF1976D2),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildStatCard(
+                    'Активных',
+                    _projects.where((p) => p.status == 'active').length.toString(),
+                    Icons.trending_up_rounded,
+                    const Color(0xFF4CAF50),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatCard(
+                    'Волонтёров',
+                    _projects.fold<int>(0, (sum, p) => sum + p.volunteerCount).toString(),
+                    Icons.people_rounded,
+                    const Color(0xFFFF9800),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildStatCard(
+                    'Всего задач',
+                    _projects.fold<int>(0, (sum, p) => sum + p.taskCount).toString(),
+                    Icons.task_alt_rounded,
+                    const Color(0xFFFFA726),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 32),
+
+            // Раздел "График активности"
+            _buildSectionTitle('График активности проектов'),
+
+            const SizedBox(height: 16),
+
+            // График (placeholder - здесь будет fl_chart)
+            Container(
+              height: 280,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.15),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Активность за последние 7 дней',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2D3436),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Expanded(
+                    child: _buildBarChart(),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 32),
+
+            // Раздел "Статус проектов"
+            _buildSectionTitle('Распределение по статусам'),
+
+            const SizedBox(height: 16),
+
+            // Круговая диаграмма (placeholder)
+            Container(
+              height: 280,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.15),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Распределение проектов',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2D3436),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Expanded(
+                    child: _buildPieChart(),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 32),
+
+            // Недавние проекты
+            _buildSectionTitle('Недавние проекты'),
+
+            const SizedBox(height: 16),
+
+            ..._projects.take(3).map((project) => _buildRecentProjectCard(project)),
+
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [color, color.withOpacity(0.8)],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.25),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.white.withOpacity(0.9),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 24,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF1976D2), Color(0xFF42A5F5)],
+            ),
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF2D3436),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBarChart() {
+    // Простая столбчатая диаграмма (placeholder)
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: List.generate(7, (index) {
+        final height = (index * 20.0 + 40).clamp(40.0, 180.0).toDouble();
+        final colors = [
+          const Color(0xFF1976D2),
+          const Color(0xFF4CAF50),
+          const Color(0xFFFF9800),
+          const Color(0xFFFFA726),
+          const Color(0xFF1976D2),
+          const Color(0xFF4CAF50),
+          const Color(0xFF42A5F5),
+        ];
+        return Flexible(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                (height ~/ 10).toString(),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Flexible(
+                child: Container(
+                  width: 32,
+                  constraints: BoxConstraints(maxHeight: height),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [colors[index], colors[index].withOpacity(0.7)],
+                    ),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: colors[index].withOpacity(0.3),
+                        blurRadius: 6,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][index],
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildPieChart() {
+    final activeCount = _projects.where((p) => p.status == 'active').length;
+    final completedCount = _projects.where((p) => p.status == 'completed').length;
+    final pendingCount = _projects.where((p) => p.status == 'pending').length;
+    final total = _projects.length > 0 ? _projects.length : 1;
+
+    return Column(
+      children: [
+        // Круговая диаграмма (упрощённая)
+        Expanded(
+          child: Center(
+            child: SizedBox(
+              width: 160,
+              height: 160,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Простая визуализация
+                  Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const SweepGradient(
+                        startAngle: 0,
+                        endAngle: 3.14 * 2,
+                        colors: [
+                          Color(0xFF4CAF50),
+                          Color(0xFF1976D2),
+                          Color(0xFFFF9800),
+                          Color(0xFF4CAF50),
+                        ],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.grey.withOpacity(0.3),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 100,
+                    height: 100,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            total.toString(),
+                            style: const TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF2D3436),
+                            ),
+                          ),
+                          Text(
+                            'проектов',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        // Легенда
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _buildLegendItem('Активные', activeCount, const Color(0xFF4CAF50)),
+            _buildLegendItem('Завершённые', completedCount, const Color(0xFF1976D2)),
+            _buildLegendItem('В ожидании', pendingCount, const Color(0xFFFF9800)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLegendItem(String label, int value, Color color) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[700],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value.toString(),
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF2D3436),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecentProjectCard(OrganizerProject project) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey[200]!),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF1976D2), Color(0xFF42A5F5)],
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.folder_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  project.title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2D3436),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(Icons.people, size: 14, color: Colors.grey[600]),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${project.volunteerCount} волонтёров',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Icon(Icons.task_alt, size: 14, color: Colors.grey[600]),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${project.taskCount} задач',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: project.status == 'active'
+                  ? const Color(0xFF4CAF50).withOpacity(0.15)
+                  : project.status == 'completed'
+                      ? const Color(0xFF1976D2).withOpacity(0.15)
+                      : const Color(0xFFFF9800).withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              project.status == 'active'
+                  ? 'Активный'
+                  : project.status == 'completed'
+                      ? 'Завершён'
+                      : 'Ожидание',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: project.status == 'active'
+                    ? const Color(0xFF4CAF50)
+                    : project.status == 'completed'
+                        ? const Color(0xFF1976D2)
+                        : const Color(0xFFFF9800),
+              ),
+            ),
           ),
         ],
       ),

@@ -19,7 +19,7 @@ class LocaleProvider extends ChangeNotifier {
   }
 
   Future<void> setLocale(Locale locale) async {
-    if (!['ru', 'kk'].contains(locale.languageCode)) {
+    if (!['ru', 'kk', 'en'].contains(locale.languageCode)) {
       return;
     }
 
@@ -31,14 +31,14 @@ class LocaleProvider extends ChangeNotifier {
     await prefs.setString('country_code', locale.countryCode ?? '');
   }
 
-  void setRussian() {
-    setLocale(const Locale('ru', 'RU'));
-  }
-
-  void setKazakh() {
-    setLocale(const Locale('kk', 'KZ'));
-  }
+  Future<void> setRussian() => setLocale(const Locale('ru', 'RU'));
+  Future<void> setKazakh() => setLocale(const Locale('kk', 'KZ'));
+  Future<void> setEnglish() => setLocale(const Locale('en', 'US'));
 
   bool get isRussian => _locale.languageCode == 'ru';
   bool get isKazakh => _locale.languageCode == 'kk';
+  bool get isEnglish => _locale.languageCode == 'en';
+
+  // Alias for currentLocale to match existing code
+  Locale get currentLocale => _locale;
 }
