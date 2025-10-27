@@ -8,10 +8,6 @@ workflows:
     instance_type: mac_mini_m1
     
     environment:
-      ios_signing:
-        distribution_type: development
-        bundle_identifier: com.example.cleanupv1
-      
       vars:
         # Переменные окружения
         FLUTTER_VERSION: 3.24.0
@@ -31,13 +27,12 @@ workflows:
         script: |
           cd ios && pod install
       
-      - name: 🏗️ Build iOS release
+      - name: 🏗️ Build iOS release (without signing)
         script: |
-          flutter build ipa --release \
-            --export-options-plist=$HOME/export_options.plist
+          flutter build ios --release --no-codesign
     
     artifacts:
-      - build/ios/ipa/*.ipa
+      - build/ios/Release-iphoneos/*.app
       - /tmp/xcodebuild_logs/*.log
     
     publishing:
