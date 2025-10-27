@@ -9,7 +9,7 @@ workflows:
     
     environment:
       ios_signing:
-        distribution_type: app_store
+        distribution_type: development
         bundle_identifier: com.example.cleanupv1
       
       vars:
@@ -47,11 +47,6 @@ workflows:
         notify:
           success: true
           failure: true
-      
-      app_store_connect:
-        # Для публикации в TestFlight
-        # Нужно настроить API ключ в Codemagic
-        submit_to_testflight: true
 
   # ===================================
   # Android Workflow - Сборка для Android
@@ -66,10 +61,6 @@ workflows:
         FLUTTER_VERSION: 3.24.0
       
       flutter: stable
-      
-      groups:
-        # Можно добавить signing credentials
-        - android_credentials
     
     scripts:
       - name: 📦 Get Flutter packages
@@ -95,12 +86,6 @@ workflows:
         notify:
           success: true
           failure: true
-      
-      google_play:
-        # Для публикации в Google Play
-        # Нужно настроить credentials в Codemagic
-        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
-        track: internal
 
   # ===================================
   # Development Workflow - Быстрые тесты
